@@ -14,7 +14,8 @@ db.on('populate', async () => {
   const defaultVehicleId = await db.vehicles.add({
     name: 'Honda Vision',
     type: 'Motorcycle',
-    plateNumber: '29A-123.45'
+    plateNumber: '29A-123.45',
+    tankCapacity: 5.2
   });
 
   const now = new Date();

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Fuel, Calendar, Compass, DollarSign, PlusCircle, Trash2, Edit2, TrendingUp, X } from 'lucide-react';
+import { Fuel, Calendar, Compass, Coins, PlusCircle, Trash2, Edit2, TrendingUp, X, AlertTriangle } from 'lucide-react';
 
 export default function RefuelingForm({ currentVehicleId, expandForm, setExpandForm }) {
   const vehicles = useLiveQuery(() => db.vehicles.toArray());
@@ -18,6 +18,9 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
   const [notes, setNotes] = useState('');
   const [editingId, setEditingId] = useState(null);
 
+  // State quản lý cảnh báo nhập liệu thời gian thực
+  const [formWarnings, setFormWarnings] = useState([]);
+
   const dateInputRef = useRef(null);
 
   // Đồng bộ mặc định xe của Form theo xe hiện hành được chọn ngoài Header
@@ -33,6 +36,71 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
     const [year, month, day] = dateStr.split('-');
     return `${day}/${month}/${year}`;
   };
+
+  // Thuật toán kiểm tra và đưa ra cảnh báo thông minh
+  const getValidationWarnings = (inputOdo, inputLiters, inputDate, inputVehicleId) => {
+    if (!inputOdo || !inputLiters || !inputDate || !inputVehicleId) return [];
+
+    const odoNum = parseInt(inputOdo);
+    const litersNum = parseFloat(inputLiters);
+    const warnings = [];
+
+    const currentVehicle = vehicles?.find(v => v.id.toString() === inputVehicleId.toString());
+    const capacity = currentVehicle?.tankCapacity || (currentVehicle?.type === 'Motorcycle' ? 6 : 60);
+
+    // 1. Cảnh báo lượng xăng đổ vượt quá dung tích bình xăng của xe
+    if (litersNum > capacity) {
+      warnings.push(`Lượng xăng đổ (${litersNum}L) vượt quá dung tích bình xăng của xe (${capacity}L).`);
+    }
+
+    // Lấy tất cả các bản ghi của xe này trừ bản ghi đang sửa (nếu có)
+    const activeLogs = refuelings
+      ? refuelings
+          .filter(log => log.vehicleId === parseInt(inputVehicleId) && log.id !== editingId)
+          .sort((a, b) => a.odometer - b.odometer)
+      : [];
+
+    if (activeLogs.length > 0) {
+      // 2. Cảnh báo nhập nhầm ODO (thứ tự ODO không khớp với trình tự thời gian)
+      const beforeLogs = activeLogs.filter(log => log.date <= inputDate);
+      const afterLogs = activeLogs.filter(log => log.date >= inputDate);
+
+      // ODO nhập nhỏ hơn ODO của một lần đổ trước đó
+      const odoClashBefore = beforeLogs.some(log => log.odometer > odoNum);
+      if (odoClashBefore) {
+        warnings.push("ODO nhập nhỏ hơn lần đổ trước đó (có thể nhập nhầm chỉ số ODO).");
+      }
+
+      // ODO nhập lớn hơn ODO của một lần đổ sau đó
+      const odoClashAfter = afterLogs.some(log => log.odometer < odoNum);
+      if (odoClashAfter) {
+        warnings.push("ODO nhập lớn hơn lần đổ sau đó (có thể nhập nhầm chỉ số ODO).");
+      }
+
+      // 3. Cảnh báo quãng đường di chuyển giữa 2 lần đổ quá dài (bỏ quên không nhập)
+      const pastLogs = activeLogs.filter(log => log.odometer < odoNum);
+      if (pastLogs.length > 0) {
+        const lastLog = pastLogs[pastLogs.length - 1];
+        const distance = odoNum - lastLog.odometer;
+
+        // Công thức tính ngưỡng cảnh báo: Dung tích * 1.5 * hiệu suất trung bình giả định (60 cho xe máy, 18 cho ô tô)
+        const efficiencyRate = currentVehicle?.type === 'Motorcycle' ? 60 : 18;
+        const limit = capacity * 1.5 * efficiencyRate;
+
+        if (distance > limit) {
+          warnings.push(`Quãng đường giữa 2 lần đổ khá dài (${distance} km > ngưỡng ${Math.round(limit)} km). Bạn có quên ghi nhận lần đổ nào ở giữa không?`);
+        }
+      }
+    }
+
+    return warnings;
+  };
+
+  // Cập nhật cảnh báo thời gian thực khi người dùng gõ
+  useEffect(() => {
+    const warns = getValidationWarnings(odometer, liters, date, vehicleId);
+    setFormWarnings(warns);
+  }, [odometer, liters, date, vehicleId, vehicles, refuelings]);
 
   // Tính toán hiệu suất (km/L) cho từng bản ghi lịch sử đổ xăng của xe hiện hành
   const processedRefuelings = useMemo(() => {
@@ -103,6 +171,11 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
       return;
     }
 
+    // Chạy kiểm tra cảnh báo cuối cùng để lưu vào DB
+    const currentWarnings = getValidationWarnings(odometer, liters, date, vehicleId);
+    const hasWarning = currentWarnings.length > 0;
+    const warningReason = currentWarnings.join('; ');
+
     const data = {
       vehicleId: parseInt(vehicleId),
       date,
@@ -112,7 +185,9 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
       totalCost: parseFloat(totalCost),
       fuelType,
       fullTank,
-      notes
+      notes,
+      hasWarning,
+      warningReason
     };
 
     try {
@@ -283,7 +358,7 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
               <div className="flex flex-col">
                 <label className="text-xs text-slate-400 font-medium mb-1 pl-1">Tổng tiền (VND) *</label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 z-10 pointer-events-none" />
+                  <Coins className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 z-10 pointer-events-none" />
                   <input
                     type="number"
                     placeholder="Tổng tiền"
@@ -309,6 +384,17 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
                 Đổ đầy bình (Đánh dấu để tính hiệu suất km/L)
               </label>
             </div>
+
+            {/* Dòng cảnh báo thời gian thực */}
+            {formWarnings.length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[11px] p-3 rounded-2xl space-y-1 animate-fade-in pl-10 relative">
+                <AlertTriangle className="w-4 h-4 text-amber-500 absolute left-3.5 top-3.5" />
+                <p className="font-bold text-xs mb-1">Cảnh báo nhập liệu:</p>
+                {formWarnings.map((w, idx) => (
+                  <p key={idx} className="leading-relaxed">- {w}</p>
+                ))}
+              </div>
+            )}
 
             {/* Ghi chú */}
             <div className="flex flex-col">
@@ -352,15 +438,20 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
             processedRefuelings.map((log) => (
               <div
                 key={log.id}
-                className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex justify-between items-center hover:border-slate-700 transition"
+                className={`border rounded-2xl p-4 flex justify-between items-center transition ${
+                  log.hasWarning 
+                    ? 'bg-amber-500/[0.03] border-amber-500/30 hover:border-amber-500/50' 
+                    : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                }`}
               >
-                <div>
+                <div className="flex-1 min-w-0 pr-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-semibold text-brand-400 text-sm">
                       {log.totalCost.toLocaleString('vi-VN')} VND
                     </span>
                     <span className="text-xs text-slate-500">•</span>
                     <span className="text-xs text-slate-400">{formatDateToDisplay(log.date)}</span>
+                    
                     {log.fullTank !== false ? (
                       <span className="flex items-center gap-0.5 text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded-md font-semibold">
                         Đầy bình
@@ -370,7 +461,19 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
                         Không đầy
                       </span>
                     )}
+
+                    {/* Dấu chấm than cảnh báo màu cam nếu có bất thường */}
+                    {log.hasWarning && (
+                      <span 
+                        className="flex items-center gap-1 text-[9px] bg-amber-500/20 text-amber-500 border border-amber-500/30 px-1.5 py-0.5 rounded-md font-bold cursor-help"
+                        title={log.warningReason}
+                      >
+                        <AlertTriangle className="w-2.5 h-2.5" />
+                        Cảnh báo
+                      </span>
+                    )}
                   </div>
+
                   <div className="text-xs text-slate-300 mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
                     <span>ODO: {log.odometer.toLocaleString('vi-VN')} km</span>
                     <span>Lượng: {log.liters} L ({log.fuelType || 'E10 Ron 95'})</span>
@@ -387,9 +490,16 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
                       {log.notes}
                     </p>
                   )}
+
+                  {/* Hiển thị chi tiết lý do cảnh báo dưới dòng lịch sử */}
+                  {log.hasWarning && log.warningReason && (
+                    <p className="text-[10px] text-amber-500 bg-amber-500/[0.04] border border-amber-500/10 p-1.5 px-2 rounded-lg mt-1.5 leading-relaxed">
+                      ⚠️ <strong>Lưu ý:</strong> {log.warningReason}
+                    </p>
+                  )}
                 </div>
 
-                <div className="flex gap-2 ml-4">
+                <div className="flex gap-2 ml-4 flex-shrink-0">
                   <button
                     onClick={() => handleEdit(log)}
                     className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-sky-400 transition"

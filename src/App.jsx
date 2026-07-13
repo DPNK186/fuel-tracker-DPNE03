@@ -33,6 +33,7 @@ export default function App() {
   const [newVehicleName, setNewVehicleName] = useState('');
   const [newVehicleType, setNewVehicleType] = useState('Motorcycle');
   const [newVehiclePlate, setNewVehiclePlate] = useState('');
+  const [newVehicleTankCapacity, setNewVehicleTankCapacity] = useState('');
 
   // Các state dành cho gợi ý cài đặt PWA
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -146,11 +147,13 @@ export default function App() {
     const newId = await db.vehicles.add({
       name: newVehicleName,
       type: newVehicleType,
-      plateNumber: newVehiclePlate
+      plateNumber: newVehiclePlate,
+      tankCapacity: newVehicleTankCapacity ? parseFloat(newVehicleTankCapacity) : null
     });
 
     setNewVehicleName('');
     setNewVehiclePlate('');
+    setNewVehicleTankCapacity('');
     
     setCurrentVehicleId(newId.toString());
     localStorage.setItem('active_vehicle_id', newId.toString());
@@ -365,7 +368,9 @@ export default function App() {
                       )}
                       <p className="text-sm font-bold text-slate-100 truncate">{v.name}</p>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-1">Biển số: {v.plateNumber || 'Không có'} • Loại: {v.type === 'Motorcycle' ? 'Xe máy' : 'Ô tô'}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Biển số: {v.plateNumber || 'Không có'} • Dung tích bình: {v.tankCapacity ? `${v.tankCapacity}L` : 'Chưa nhập'}
+                    </p>
                   </div>
                   
                   {v.id.toString() === currentVehicleId ? (
@@ -422,6 +427,14 @@ export default function App() {
                     className="glass-input text-sm py-2"
                   />
                 </div>
+                <input
+                  type="number"
+                  step="0.1"
+                  placeholder="Dung tích bình xăng (Lít - VD: 5.2)"
+                  value={newVehicleTankCapacity}
+                  onChange={(e) => setNewVehicleTankCapacity(e.target.value)}
+                  className="glass-input text-sm py-2 w-full"
+                />
               </div>
               
               <button

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Wrench, Calendar, Compass, DollarSign, PlusCircle, Trash2, Edit2, Camera, X } from 'lucide-react';
+import { Wrench, Calendar, Compass, Coins, PlusCircle, Trash2, Edit2, Camera, X } from 'lucide-react';
 
 const CATEGORIES = [
   'Bảo dưỡng',
@@ -218,7 +218,7 @@ export default function ExpenseForm({ currentVehicleId, expandForm, setExpandFor
               <div className="flex flex-col">
                 <label className="text-xs text-slate-400 font-medium mb-1 pl-1">Số tiền (VND) *</label>
                 <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 z-10 pointer-events-none" />
+                  <Coins className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 z-10 pointer-events-none" />
                   <input
                     type="number"
                     placeholder="Ví dụ: 150000"

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Fuel, DollarSign, Compass, TrendingUp, BarChart3, Car, Bike, Plus, Sparkles } from 'lucide-react';
+import { Fuel, Coins, Compass, TrendingUp, BarChart3, Car, Bike, Plus, Sparkles } from 'lucide-react';
 
 export default function Dashboard({ currentVehicleId, onQuickAction, onOpenVehicleManager }) {
   const refuelings = useLiveQuery(() => db.refuelings.orderBy('odometer').toArray());
@@ -261,7 +261,7 @@ export default function Dashboard({ currentVehicleId, onQuickAction, onOpenVehic
         <div className="glass-card rounded-3xl p-5 animate-fade-in" style={{ animationDelay: '0.05s' }}>
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Tổng chi phí</span>
-            <DollarSign className="w-4 h-4 text-brand-400" />
+            <Coins className="w-4 h-4 text-brand-400" />
           </div>
           <div className="text-xl font-black text-slate-100">
             {stats.totalCost.toLocaleString('vi-VN')}
