@@ -2,6 +2,18 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.1.4] - 2026-07-13
+
+### Fixed (Sửa lỗi)
+- Khắc phục lỗi chồng lấn giao diện (overlapping) khi hiển thị PWA Install Banner và PWA Update Toast/Offline Ready Toast cùng lúc tại `fixed bottom-[74px]`. Banner cài đặt sẽ tự động ẩn đi để ưu tiên hiển thị thông báo cập nhật quan trọng hơn.
+- Tắt độ mờ (opacity) nền cho cả hai banner bằng cách chuyển màu nền từ bán trong suốt (`bg-slate-900/98`) thành màu đặc hoàn toàn (`bg-slate-900`), ngăn ngừa việc lộ nội dung rối mắt ở phía dưới khi chồng xếp.
+
+### Changed (Thay đổi)
+- Tối ưu hóa hiệu năng tải logo và favicon ban đầu bằng cách tạo các asset có độ phân giải thấp và dung lượng cực nhẹ từ ảnh gốc `Icon1.png` (nặng 1.7 MB):
+  - [icon-128.png](file:///d:/AI-Fuel-Tracker/public/icon-128.png): kích thước 128x128px, dung lượng ~38 KB, dùng cho logo trong ứng dụng (Header).
+  - [favicon-32.png](file:///d:/AI-Fuel-Tracker/public/favicon-32.png): kích thước 32x32px, dung lượng ~3.4 KB, dùng làm favicon cho trình duyệt.
+- Cập nhật cấu hình PWA `includeAssets` trong `vite.config.js` để đưa hai asset logo mới này vào danh sách precache tải ngoại tuyến của Service Worker.
+
 ## 🚀 [1.1.3] - 2026-07-13
 
 ### Changed (Thay đổi)

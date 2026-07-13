@@ -217,7 +217,7 @@ export default function App() {
       <header className="sticky top-0 z-50 bg-slate-900 px-5 py-3.5 flex items-center justify-between border-b border-slate-800 rounded-b-2xl transition-all duration-300">
         <div className="flex items-center gap-2.5">
           <img 
-            src="/fuel-tracker-DPNE03/Icon1.png" 
+            src="/fuel-tracker-DPNE03/icon-128.png" 
             alt="Xăng Xe Logo" 
             className="w-8 h-8 rounded-xl object-cover border border-brand-500/20"
           />
@@ -290,8 +290,8 @@ export default function App() {
       </main>
 
       {/* Smart Floating PWA Install Banner */}
-      {showPwaBanner && (
-        <div className="fixed bottom-[74px] left-4 right-4 max-w-[calc(100%-2rem)] sm:max-w-[544px] md:max-w-[640px] mx-auto z-40 bg-slate-900/98 border border-brand-500/20 p-3.5 rounded-2xl shadow-2xl shadow-black/90 flex items-center justify-between gap-3 animate-fade-in transition-all">
+      {showPwaBanner && !offlineReady && !needRefresh && (
+        <div className="fixed bottom-[74px] left-4 right-4 max-w-[calc(100%-2rem)] sm:max-w-[544px] md:max-w-[640px] mx-auto z-40 bg-slate-900 border border-brand-500/20 p-3.5 rounded-2xl shadow-2xl shadow-black/90 flex items-center justify-between gap-3 animate-fade-in transition-all">
           <div className="flex-1 min-w-0">
             <h4 className="text-xs font-extrabold text-slate-100 flex items-center gap-1.5">
               📲 Tải ứng dụng Xăng Xe PWA
@@ -326,7 +326,7 @@ export default function App() {
 
       {/* Smart Floating PWA Update Toast - Kích hoạt khi phát hiện phiên bản mới hoặc sẵn sàng Offline */}
       {(offlineReady || needRefresh) && (
-        <div className="fixed bottom-[74px] left-4 right-4 max-w-[calc(100%-2rem)] sm:max-w-[544px] md:max-w-[640px] mx-auto z-50 bg-slate-900/98 border border-emerald-500/30 p-4 rounded-2xl shadow-2xl shadow-black/90 flex flex-col gap-2.5 animate-fade-in transition-all">
+        <div className="fixed bottom-[74px] left-4 right-4 max-w-[calc(100%-2rem)] sm:max-w-[544px] md:max-w-[640px] mx-auto z-50 bg-slate-900 border border-emerald-500/30 p-4 rounded-2xl shadow-2xl shadow-black/90 flex flex-col gap-2.5 animate-fade-in transition-all">
           <div>
             <h4 className="text-xs font-extrabold text-slate-100 flex items-center gap-1.5">
               {offlineReady ? '📲 Đã sẵn sàng chạy Ngoại tuyến' : '✨ Có phiên bản mới'}

@@ -18,7 +18,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['favicon.ico', 'Icon1.png'],
+      includeAssets: ['favicon.ico', 'Icon1.png', 'icon-128.png', 'favicon-32.png'],
       manifest: {
         name: 'Xăng Xe',
         short_name: 'Xăng Xe',

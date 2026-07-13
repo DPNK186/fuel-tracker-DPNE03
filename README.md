@@ -19,6 +19,7 @@
 * **Chụp ảnh và nén biên lai**:
   * Cho phép chụp ảnh trực tiếp từ camera hoặc tải ảnh biên lai bảo dưỡng/chi phí lên để lưu trữ cùng lịch sử.
   * Tích hợp thuật toán nén ảnh tự động bằng HTML5 Canvas (giảm dung lượng ảnh từ 5MB xuống còn ~50KB) giúp tiết kiệm bộ nhớ máy và chống lag app.
+* **Tối ưu hóa dung lượng Assets**: Tạo các phiên bản logo in-app (128x128px ~38KB) và favicon (32x32px ~3.4KB) dung lượng siêu nhỏ từ ảnh gốc 1.7MB để giảm thiểu băng thông mạng và tăng tốc độ hiển thị tức thì.
 * **Độ rộng Responsive**: Giao diện thiết kế theo chuẩn di động hiện đại nhưng co giãn mượt mà khi đổi kích thước trên cả tablet và máy tính lớn.
 
 ---
