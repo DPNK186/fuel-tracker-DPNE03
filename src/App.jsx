@@ -11,7 +11,7 @@ import {
   Wrench, 
   Cloud, 
   Car, 
-  Bike, // Thêm Bike icon cho xe máy
+  Bike, 
   Plus, 
   X, 
   Wifi, 
@@ -34,6 +34,12 @@ export default function App() {
   const [newVehicleType, setNewVehicleType] = useState('Motorcycle');
   const [newVehiclePlate, setNewVehiclePlate] = useState('');
 
+  // Các state dành cho gợi ý cài đặt PWA
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showPwaBanner, setShowPwaBanner] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+
+  // Quản lý trạng thái Online/Offline
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -59,6 +65,65 @@ export default function App() {
     }
   }, [vehicles, currentVehicleId]);
 
+  // Kiểm tra trạng thái Standalone & Snooze 7 ngày của PWA Banner
+  useEffect(() => {
+    // 1. Kiểm tra xem ứng dụng có đang chạy ở chế độ standalone (đã cài đặt) không
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches 
+      || window.navigator.standalone 
+      || document.referrer.includes('android-app://');
+
+    if (isStandalone) {
+      setShowPwaBanner(false);
+      return;
+    }
+
+    // 2. Kiểm tra xem người dùng có tắt banner trong vòng 7 ngày qua không
+    const dismissedAt = localStorage.getItem('pwa_banner_dismissed_at');
+    if (dismissedAt) {
+      const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+      if (new Date().getTime() - parseInt(dismissedAt) < sevenDaysInMs) {
+        setShowPwaBanner(false);
+        return;
+      }
+    }
+
+    // 3. Kiểm tra xem có phải thiết bị iOS không
+    const iosCheck = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    setIsIOS(iosCheck);
+
+    // Nếu là iOS, hiển thị banner hướng dẫn thủ công vì không có sự kiện beforeinstallprompt
+    if (iosCheck) {
+      setShowPwaBanner(true);
+    }
+
+    // Lắng nghe sự kiện cài đặt PWA trên Android/Desktop
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowPwaBanner(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallPwa = () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((choiceResult) => {
+      if (choiceResult.outcome === 'accepted') {
+        setShowPwaBanner(false);
+      }
+      setDeferredPrompt(null);
+    });
+  };
+
+  const handleDismissPwaBanner = () => {
+    setShowPwaBanner(false);
+    // Lưu mốc thời gian tắt banner để ẩn trong vòng 7 ngày tiếp theo
+    localStorage.setItem('pwa_banner_dismissed_at', new Date().getTime().toString());
+  };
+
   const handleSelectVehicle = (id) => {
     setCurrentVehicleId(id.toString());
     localStorage.setItem('active_vehicle_id', id.toString());
@@ -69,13 +134,10 @@ export default function App() {
     e.preventDefault();
     if (!newVehicleName) return;
 
-    // Kiểm tra xem trong DB hiện tại có xe mẫu mặc định biển số 29A-123.45 hay không
     const sampleVehicle = vehicles?.find(v => v.plateNumber === '29A-123.45');
 
-    // Nếu có xe mẫu và người dùng đang bắt đầu thêm xe thật của họ
     if (sampleVehicle) {
       const sampleId = sampleVehicle.id;
-      // Tự động xóa sạch xe mẫu cùng các dữ liệu mẫu liên kết
       await db.vehicles.delete(sampleId);
       await db.refuelings.where('vehicleId').equals(sampleId).delete();
       await db.expenses.where('vehicleId').equals(sampleId).delete();
@@ -90,7 +152,6 @@ export default function App() {
     setNewVehicleName('');
     setNewVehiclePlate('');
     
-    // Tự động đặt xe mới làm xe hiện hành
     setCurrentVehicleId(newId.toString());
     localStorage.setItem('active_vehicle_id', newId.toString());
     
@@ -105,7 +166,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col w-full max-w-md sm:max-w-xl md:max-w-2xl mx-auto relative shadow-2xl border-x border-slate-900 transition-all duration-300">
-      {/* Top Header - Đổi sang bg-slate-900 solid đục hoàn toàn để tránh đè chữ khi cuộn */}
+      {/* Top Header */}
       <header className="sticky top-0 z-50 bg-slate-900 px-5 py-3.5 flex items-center justify-between border-b border-slate-800 rounded-b-2xl transition-all duration-300">
         <div className="flex items-center gap-2.5">
           <img 
@@ -135,7 +196,7 @@ export default function App() {
             )}
           </div>
 
-          {/* Manage Vehicle Button - Đồng bộ icon & Tên xe hiện đang chọn */}
+          {/* Manage Vehicle Button */}
           <button 
             onClick={() => setShowVehicleModal(true)}
             className="bg-slate-900 hover:bg-slate-800 py-1.5 px-3 rounded-xl text-slate-300 hover:text-white border border-slate-800 transition flex items-center gap-1.5 text-xs font-bold shadow-md shadow-black/30 active:scale-95"
@@ -181,7 +242,42 @@ export default function App() {
         {activeTab === 'sync' && <SyncBackup />}
       </main>
 
-      {/* Navigation Tabbar - Đổi sang bg-slate-900 solid đục hoàn toàn để tránh đè chữ khi cuộn */}
+      {/* Smart Floating PWA Install Banner */}
+      {showPwaBanner && (
+        <div className="fixed bottom-[74px] left-4 right-4 max-w-[calc(100%-2rem)] sm:max-w-[544px] md:max-w-[640px] mx-auto z-40 bg-slate-900/98 border border-brand-500/20 p-3.5 rounded-2xl shadow-2xl shadow-black/90 flex items-center justify-between gap-3 animate-fade-in transition-all">
+          <div className="flex-1 min-w-0">
+            <h4 className="text-xs font-extrabold text-slate-100 flex items-center gap-1.5">
+              📲 Tải ứng dụng Xăng Xe PWA
+            </h4>
+            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+              {isIOS ? (
+                <span>Nhấp chọn nút **Chia sẻ 📤** trên trình duyệt Safari → Chọn **Thêm vào MH chính ➕**.</span>
+              ) : (
+                <span>Cài đặt ứng dụng lên màn hình chính để sử dụng toàn màn hình và mở ngoại tuyến không cần mạng.</span>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {!isIOS && deferredPrompt && (
+              <button
+                onClick={handleInstallPwa}
+                className="text-[10px] font-bold text-white bg-gradient-to-r from-brand-500 to-emerald-600 hover:from-brand-600 hover:to-emerald-700 px-3 py-1.5 rounded-xl shadow-md transition active:scale-95"
+              >
+                Cài đặt
+              </button>
+            )}
+            <button
+              onClick={handleDismissPwaBanner}
+              className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition"
+              title="Ẩn gợi ý trong 7 ngày"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Navigation Tabbar */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-md sm:max-w-xl md:max-w-2xl mx-auto bg-slate-900 border-t border-slate-800 rounded-t-3xl tab-bar-safe z-50 transition-all duration-300">
         <div className="grid grid-cols-4 py-2">
           {/* Dashboard Tab */}
@@ -280,7 +376,7 @@ export default function App() {
                     vehicles.length > 1 && (
                       <button 
                         onClick={async (e) => {
-                          e.stopPropagation(); // Ngăn chọn xe khi bấm xóa
+                          e.stopPropagation();
                           if (confirm(`Bạn có chắc chắn muốn xóa xe "${v.name}" và toàn bộ dữ liệu đổ xăng, chi phí của xe này?`)) {
                             await db.vehicles.delete(v.id);
                             await db.refuelings.where('vehicleId').equals(v.id).delete();
