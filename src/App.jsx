@@ -223,7 +223,7 @@ export default function App() {
           />
           <div>
             <h1 className="text-md font-extrabold tracking-tight text-white leading-none">Xăng Xe</h1>
-            <span className="text-[10px] text-slate-400 font-semibold uppercase">Offline-First App</span>
+            <span className="text-[10px] text-slate-400 font-semibold">By ĐPNE03</span>
           </div>
         </div>
 

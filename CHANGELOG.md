@@ -13,6 +13,7 @@ Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận
   - [icon-128.png](file:///d:/AI-Fuel-Tracker/public/icon-128.png): kích thước 128x128px, dung lượng ~38 KB, dùng cho logo trong ứng dụng (Header).
   - [favicon-32.png](file:///d:/AI-Fuel-Tracker/public/favicon-32.png): kích thước 32x32px, dung lượng ~3.4 KB, dùng làm favicon cho trình duyệt.
 - Cập nhật cấu hình PWA `includeAssets` trong `vite.config.js` để đưa hai asset logo mới này vào danh sách precache tải ngoại tuyến của Service Worker.
+- Thay đổi nhãn tiêu đề phụ trong Header từ "Offline-First App" sang "By ĐPNE03" để ghi nhận thông tin nhóm phát triển.
 
 ## 🚀 [1.1.3] - 2026-07-13
 
