@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import RefuelingForm from './components/RefuelingForm';
 import ExpenseForm from './components/ExpenseForm';
 import SyncBackup from './components/SyncBackup';
+import { useRegisterSW } from 'virtual:pwa-register/react'; // Import hook đăng ký SW chủ động
 import { 
   LayoutDashboard, 
   Fuel, 
@@ -42,6 +43,13 @@ export default function App() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showPwaBanner, setShowPwaBanner] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+
+  // Lắng nghe sự kiện cập nhật PWA chủ động qua Service Worker Prompt
+  const {
+    offlineReady: [offlineReady, setOfflineReady],
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW();
 
   // Quản lý trạng thái Online/Offline
   useEffect(() => {
@@ -297,6 +305,41 @@ export default function App() {
         </div>
       )}
 
+      {/* Smart Floating PWA Update Toast - Kích hoạt khi phát hiện phiên bản mới hoặc sẵn sàng Offline */}
+      {(offlineReady || needRefresh) && (
+        <div className="fixed bottom-[74px] left-4 right-4 max-w-[calc(100%-2rem)] sm:max-w-[544px] md:max-w-[640px] mx-auto z-50 bg-slate-900/98 border border-emerald-500/30 p-4 rounded-2xl shadow-2xl shadow-black/90 flex flex-col gap-2.5 animate-fade-in transition-all">
+          <div>
+            <h4 className="text-xs font-extrabold text-slate-100 flex items-center gap-1.5">
+              {offlineReady ? '📲 Đã sẵn sàng chạy Ngoại tuyến' : '✨ Có phiên bản mới'}
+            </h4>
+            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+              {offlineReady 
+                ? 'Ứng dụng đã được tải về bộ nhớ đệm và sẵn sàng sử dụng offline (không cần mạng).' 
+                : 'Ứng dụng Xăng Xe vừa có bản cập nhật mới trên máy chủ. Vui lòng làm mới để nạp ngay tính năng mới nhất.'}
+            </p>
+          </div>
+          <div className="flex gap-2 justify-end">
+            {needRefresh && (
+              <button
+                onClick={() => updateServiceWorker(true)}
+                className="text-[10px] font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 px-3.5 py-1.5 rounded-xl shadow-md transition active:scale-95"
+              >
+                Cập nhật ngay
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setOfflineReady(false);
+                setNeedRefresh(false);
+              }}
+              className="text-[10px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-750 px-3.5 py-1.5 rounded-xl transition active:scale-95"
+            >
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Navigation Tabbar */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-md sm:max-w-xl md:max-w-2xl mx-auto bg-slate-900 border-t border-slate-800 rounded-t-3xl tab-bar-safe z-50 transition-all duration-300">
         <div className="grid grid-cols-4 py-2">
@@ -400,7 +443,7 @@ export default function App() {
                     {/* Nút sửa xe */}
                     <button
                       onClick={(e) => {
-                        e.stopPropagation(); // Ngăn chọn xe làm active
+                        e.stopPropagation();
                         handleEditVehicle(v);
                       }}
                       className="text-[10px] text-sky-400 hover:text-sky-300 font-bold px-2 py-1.5 hover:bg-slate-800 rounded-lg transition"
