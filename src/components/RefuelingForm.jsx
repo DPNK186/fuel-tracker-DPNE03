@@ -62,19 +62,26 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
 
     if (activeLogs.length > 0) {
       // 2. Cảnh báo nhập nhầm ODO (thứ tự ODO không khớp với trình tự thời gian)
-      const beforeLogs = activeLogs.filter(log => log.date <= inputDate);
-      const afterLogs = activeLogs.filter(log => log.date >= inputDate);
+      const beforeLogs = activeLogs.filter(log => log.date < inputDate);
+      const afterLogs = activeLogs.filter(log => log.date > inputDate);
+      const sameDayLogs = activeLogs.filter(log => log.date === inputDate);
 
-      // ODO nhập nhỏ hơn ODO của một lần đổ trước đó
+      // ODO nhập nhỏ hơn ODO của một lần đổ ở ngày trước đó
       const odoClashBefore = beforeLogs.some(log => log.odometer > odoNum);
       if (odoClashBefore) {
-        warnings.push("ODO nhập nhỏ hơn lần đổ trước đó (có thể nhập nhầm chỉ số ODO).");
+        warnings.push("ODO nhập nhỏ hơn lần đổ ở ngày trước đó (có thể nhập nhầm ODO).");
       }
 
-      // ODO nhập lớn hơn ODO của một lần đổ sau đó
+      // ODO nhập lớn hơn ODO của một lần đổ ở ngày sau đó
       const odoClashAfter = afterLogs.some(log => log.odometer < odoNum);
       if (odoClashAfter) {
-        warnings.push("ODO nhập lớn hơn lần đổ sau đó (có thể nhập nhầm chỉ số ODO).");
+        warnings.push("ODO nhập lớn hơn lần đổ ở ngày sau đó (có thể nhập nhầm ODO).");
+      }
+
+      // Kiểm tra trùng ODO trong cùng một ngày
+      const odoClashSameDay = sameDayLogs.some(log => log.odometer === odoNum);
+      if (odoClashSameDay) {
+        warnings.push("Chỉ số ODO nhập bị trùng với một lần đổ khác trong cùng ngày.");
       }
 
       // 3. Cảnh báo quãng đường di chuyển giữa 2 lần đổ quá dài (bỏ quên không nhập)
