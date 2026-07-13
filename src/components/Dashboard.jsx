@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Fuel, DollarSign, Compass, TrendingUp, BarChart3, Car, Plus } from 'lucide-react';
+import { Fuel, DollarSign, Compass, TrendingUp, BarChart3, Car, Plus, Sparkles } from 'lucide-react';
 
-export default function Dashboard({ onQuickAction }) {
+export default function Dashboard({ onQuickAction, onOpenVehicleManager }) {
   const refuelings = useLiveQuery(() => db.refuelings.orderBy('odometer').toArray());
   const expenses = useLiveQuery(() => db.expenses.orderBy('date').toArray());
   const vehicles = useLiveQuery(() => db.vehicles.toArray());
@@ -144,8 +144,64 @@ export default function Dashboard({ onQuickAction }) {
     return { points, pathD, areaD, width, height, padding };
   }, [efficiencyPoints]);
 
+  // Kiểm tra xem ứng dụng có trống hoàn toàn phương tiện hay không
+  const isNoVehicles = !vehicles || vehicles.length === 0;
+
+  // Kiểm tra xem ứng dụng chỉ có đúng duy nhất xe mẫu mặc định ban đầu
+  const isOnlySampleVehicle = useMemo(() => {
+    if (!vehicles || vehicles.length !== 1) return false;
+    return vehicles[0].plateNumber === '29A-123.45';
+  }, [vehicles]);
+
+  if (isNoVehicles) {
+    return (
+      <div className="space-y-6 max-w-lg mx-auto pb-24">
+        {/* Khối Empty State lớn khi người dùng xóa hết xe mẫu */}
+        <div className="glass-card rounded-3xl p-8 text-center space-y-5 animate-fade-in border-dashed border-slate-800">
+          <div className="bg-slate-900/60 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto text-slate-500 border border-slate-800">
+            <Car className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-base font-bold text-slate-200">Chưa có phương tiện nào</h3>
+            <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+              Vui lòng thêm phương tiện cá nhân của bạn (Xe máy hoặc Ô tô) để bắt đầu ghi nhận và theo dõi hiệu suất nhiên liệu.
+            </p>
+          </div>
+          <button
+            onClick={onOpenVehicleManager}
+            className="w-full bg-gradient-to-r from-brand-500 to-emerald-600 hover:from-brand-600 hover:to-emerald-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg shadow-brand-500/10 flex items-center justify-center gap-1.5 active:scale-95 transition"
+          >
+            <Plus className="w-4 h-4" />
+            Thêm phương tiện đầu tiên
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-lg mx-auto pb-24">
+      {/* Banner Onboarding chào mừng/hướng dẫn thêm xe riêng khi dùng xe mẫu */}
+      {isOnlySampleVehicle && (
+        <div 
+          onClick={onOpenVehicleManager}
+          className="glass-card rounded-2xl p-4 border border-brand-500/20 bg-brand-500/5 cursor-pointer hover:bg-brand-500/10 active:scale-98 transition flex items-center justify-between animate-fade-in"
+        >
+          <div className="flex-1 pr-2">
+            <h4 className="text-xs font-bold text-brand-400 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 animate-pulse text-amber-400" />
+              Bắt đầu quản lý xe của bạn
+            </h4>
+            <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+              Hệ thống đang hiển thị dữ liệu mẫu. Bấm vào đây để thêm xe cá nhân của bạn và bắt đầu theo dõi chính xác!
+            </p>
+          </div>
+          <span className="text-[10px] font-bold text-white bg-brand-500/80 hover:bg-brand-600 px-2.5 py-1.5 rounded-lg shadow-sm transition">
+            Thêm ngay
+          </span>
+        </div>
+      )}
+
       {/* Vehicle Info Card */}
       <div className="glass-card rounded-3xl p-5 flex items-center justify-between animate-fade-in">
         <div className="flex items-center gap-3">

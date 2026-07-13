@@ -113,6 +113,7 @@ export default function App() {
               if (tab === 'refueling') setExpandRefuel(expand);
               if (tab === 'expenses') setExpandExpense(expand);
             }} 
+            onOpenVehicleManager={() => setShowVehicleModal(true)}
           />
         )}
         {activeTab === 'refueling' && (
