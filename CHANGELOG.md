@@ -2,6 +2,17 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.1.1] - 2026-07-13
+
+### Add (Thêm mới)
+- Thêm phần thông báo hướng dẫn xin cấp quyền truy cập (Access Instruction) khi trạng thái chưa kết nối Google Drive, bao gồm hộp thông tin chi tiết và nút "Gửi Email đăng ký" thông minh qua liên kết `mailto:dpn.e103a@gmail.com`.
+
+### Changed (Thay đổi)
+- Tối ưu hóa cơ chế dọn dẹp bộ nhớ đệm xác thực: Khi token Google Drive hết hạn, hệ thống sẽ phát tín hiệu đồng bộ bằng sự kiện tùy biến (`CustomEvent` mang tên `google-drive-logout`) giúp giao diện tự động chuyển trạng thái về "Chưa kết nối đám mây" ngay lập tức.
+
+### Fixed (Sửa lỗi)
+- Khắc phục nguy cơ crash ứng dụng do lỗi phản hồi mạng bằng hàm helper an toàn `parseErrorResponse`, đọc dữ liệu thô dạng văn bản (`text()`) trước khi parse JSON từ Google Drive API.
+
 ## 🚀 [1.1.0] - 2026-07-13
 
 ### Add (Thêm mới)

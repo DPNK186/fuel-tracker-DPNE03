@@ -1,6 +1,21 @@
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 
+// Hàm trợ giúp đọc thông tin lỗi an toàn
+async function parseErrorResponse(response) {
+  try {
+    const rawText = await response.text();
+    try {
+      const errData = JSON.parse(rawText);
+      return errData.error?.message || response.statusText || 'Lỗi không xác định';
+    } catch (e) {
+      return rawText || response.statusText || 'Lỗi không xác định';
+    }
+  } catch (e) {
+    return response.statusText || 'Lỗi không xác định';
+  }
+}
+
 export const googleDriveService = {
   // Lấy Access Token từ URL hash hoặc localStorage
   getAccessToken() {
@@ -59,6 +74,7 @@ export const googleDriveService = {
   logout() {
     localStorage.removeItem('google_access_token');
     localStorage.removeItem('google_token_expires_at');
+    window.dispatchEvent(new CustomEvent('google-drive-logout'));
   },
 
   // Kiểm tra xem đã kết nối tài khoản chưa
@@ -81,8 +97,7 @@ export const googleDriveService = {
     });
     
     if (!searchResponse.ok) {
-      const errData = await searchResponse.json().catch(() => ({}));
-      const errMsg = errData.error?.message || searchResponse.statusText || 'Lỗi không xác định';
+      const errMsg = await parseErrorResponse(searchResponse);
       throw new Error(`Kiểm tra file trên Drive thất bại: ${errMsg}`);
     }
     
@@ -121,8 +136,7 @@ export const googleDriveService = {
       });
       
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        const errMsg = errData.error?.message || response.statusText || 'Lỗi không xác định';
+        const errMsg = await parseErrorResponse(response);
         throw new Error(`Cập nhật file sao lưu thất bại: ${errMsg}`);
       }
       return await response.json();
@@ -148,8 +162,7 @@ export const googleDriveService = {
       });
       
       if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        const errMsg = errData.error?.message || response.statusText || 'Lỗi không xác định';
+        const errMsg = await parseErrorResponse(response);
         throw new Error(`Tạo file sao lưu mới thất bại: ${errMsg}`);
       }
       return await response.json();
@@ -171,8 +184,7 @@ export const googleDriveService = {
     });
     
     if (!searchResponse.ok) {
-      const errData = await searchResponse.json().catch(() => ({}));
-      const errMsg = errData.error?.message || searchResponse.statusText || 'Lỗi không xác định';
+      const errMsg = await parseErrorResponse(searchResponse);
       throw new Error(`Tìm kiếm dữ liệu trên Drive thất bại: ${errMsg}`);
     }
     
@@ -190,8 +202,7 @@ export const googleDriveService = {
     });
     
     if (!downloadResponse.ok) {
-      const errData = await downloadResponse.json().catch(() => ({}));
-      const errMsg = errData.error?.message || downloadResponse.statusText || 'Lỗi không xác định';
+      const errMsg = await parseErrorResponse(downloadResponse);
       throw new Error(`Tải file sao lưu thất bại: ${errMsg}`);
     }
     

@@ -13,6 +13,15 @@ export default function SyncBackup() {
     // Kích hoạt việc lấy token từ URL hash nếu có
     googleDriveService.getAccessToken();
     setIsConnected(googleDriveService.isConnected());
+
+    const handleLogoutEvent = () => {
+      setIsConnected(false);
+    };
+
+    window.addEventListener('google-drive-logout', handleLogoutEvent);
+    return () => {
+      window.removeEventListener('google-drive-logout', handleLogoutEvent);
+    };
   }, []);
 
   const handleLogin = () => {
@@ -225,6 +234,20 @@ export default function SyncBackup() {
                 <LogIn className="w-5 h-5" />
                 Đăng nhập với Google
               </button>
+              <div className="bg-slate-900/80 border border-dashed border-slate-800 rounded-2xl p-4 text-left space-y-2 mt-4">
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  📌 <strong className="text-slate-300">Lưu ý dành cho thành viên mới:</strong> Do ứng dụng đang trong giai đoạn vận hành nội bộ, nếu bạn gặp lỗi chặn đăng nhập từ Google (Error 403: access_denied), vui lòng gửi địa chỉ Gmail của bạn tới Quản trị viên ĐPNE03 qua mail để được duyệt cấp quyền kết nối hệ thống.
+                </p>
+                <div className="text-right">
+                  <a
+                    href="mailto:dpn.e103a@gmail.com?subject=Yêu cầu cấp quyền Sync ứng dụng Xăng Xe"
+                    className="inline-flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-300 font-semibold transition"
+                  >
+                    <span>Gửi Email đăng ký</span>
+                    <span>→</span>
+                  </a>
+                </div>
+              </div>
             </div>
           )}
         </div>
