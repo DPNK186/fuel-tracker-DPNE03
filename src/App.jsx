@@ -35,6 +35,9 @@ export default function App() {
   const [newVehiclePlate, setNewVehiclePlate] = useState('');
   const [newVehicleTankCapacity, setNewVehicleTankCapacity] = useState('');
 
+  // Chế độ chỉnh sửa thông tin xe
+  const [editingVehicleId, setEditingVehicleId] = useState(null);
+
   // Các state dành cho gợi ý cài đặt PWA
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showPwaBanner, setShowPwaBanner] = useState(false);
@@ -131,33 +134,47 @@ export default function App() {
     setShowVehicleModal(false);
   };
 
+  const handleEditVehicle = (vehicle) => {
+    setEditingVehicleId(vehicle.id);
+    setNewVehicleName(vehicle.name);
+    setNewVehicleType(vehicle.type);
+    setNewVehiclePlate(vehicle.plateNumber || '');
+    setNewVehicleTankCapacity(vehicle.tankCapacity ? vehicle.tankCapacity.toString() : '');
+  };
+
   const handleAddVehicle = async (e) => {
     e.preventDefault();
     if (!newVehicleName) return;
 
-    const sampleVehicle = vehicles?.find(v => v.plateNumber === '29A-123.45');
-
-    if (sampleVehicle) {
-      const sampleId = sampleVehicle.id;
-      await db.vehicles.delete(sampleId);
-      await db.refuelings.where('vehicleId').equals(sampleId).delete();
-      await db.expenses.where('vehicleId').equals(sampleId).delete();
-    }
-
-    const newId = await db.vehicles.add({
+    const data = {
       name: newVehicleName,
       type: newVehicleType,
       plateNumber: newVehiclePlate,
       tankCapacity: newVehicleTankCapacity ? parseFloat(newVehicleTankCapacity) : null
-    });
+    };
+
+    if (editingVehicleId) {
+      // Chế độ Chỉnh sửa
+      await db.vehicles.update(editingVehicleId, data);
+      setEditingVehicleId(null);
+    } else {
+      // Chế độ Thêm mới (Kiểm tra và tự động dọn dẹp xe mẫu)
+      const sampleVehicle = vehicles?.find(v => v.plateNumber === '29A-123.45');
+      if (sampleVehicle) {
+        const sampleId = sampleVehicle.id;
+        await db.vehicles.delete(sampleId);
+        await db.refuelings.where('vehicleId').equals(sampleId).delete();
+        await db.expenses.where('vehicleId').equals(sampleId).delete();
+      }
+
+      const newId = await db.vehicles.add(data);
+      setCurrentVehicleId(newId.toString());
+      localStorage.setItem('active_vehicle_id', newId.toString());
+    }
 
     setNewVehicleName('');
     setNewVehiclePlate('');
     setNewVehicleTankCapacity('');
-    
-    setCurrentVehicleId(newId.toString());
-    localStorage.setItem('active_vehicle_id', newId.toString());
-    
     setShowVehicleModal(false);
   };
 
@@ -339,7 +356,13 @@ export default function App() {
                 Chọn & Quản lý xe
               </h3>
               <button 
-                onClick={() => setShowVehicleModal(false)}
+                onClick={() => {
+                  setShowVehicleModal(false);
+                  setEditingVehicleId(null);
+                  setNewVehicleName('');
+                  setNewVehiclePlate('');
+                  setNewVehicleTankCapacity('');
+                }}
                 className="p-1 hover:bg-slate-800 rounded-lg text-slate-400"
               >
                 <X className="w-5 h-5" />
@@ -373,34 +396,49 @@ export default function App() {
                     </p>
                   </div>
                   
-                  {v.id.toString() === currentVehicleId ? (
-                    <span className="text-[9px] font-bold text-brand-400 bg-brand-500/10 px-2 py-0.5 rounded-md border border-brand-500/20">
-                      Đang chọn
-                    </span>
-                  ) : (
-                    vehicles.length > 1 && (
-                      <button 
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (confirm(`Bạn có chắc chắn muốn xóa xe "${v.name}" và toàn bộ dữ liệu đổ xăng, chi phí của xe này?`)) {
-                            await db.vehicles.delete(v.id);
-                            await db.refuelings.where('vehicleId').equals(v.id).delete();
-                            await db.expenses.where('vehicleId').equals(v.id).delete();
-                          }
-                        }}
-                        className="text-[10px] text-rose-500 hover:text-rose-400 font-bold px-2.5 py-1 hover:bg-rose-950/20 rounded-lg transition"
-                      >
-                        Xóa
-                      </button>
-                    )
-                  )}
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {/* Nút sửa xe */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation(); // Ngăn chọn xe làm active
+                        handleEditVehicle(v);
+                      }}
+                      className="text-[10px] text-sky-400 hover:text-sky-300 font-bold px-2 py-1.5 hover:bg-slate-800 rounded-lg transition"
+                    >
+                      Sửa
+                    </button>
+
+                    {v.id.toString() === currentVehicleId ? (
+                      <span className="text-[9px] font-bold text-brand-400 bg-brand-500/10 px-2 py-0.5 rounded-md border border-brand-500/20">
+                        Đang chọn
+                      </span>
+                    ) : (
+                      vehicles.length > 1 && (
+                        <button 
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (confirm(`Bạn có chắc chắn muốn xóa xe "${v.name}" và toàn bộ dữ liệu đổ xăng, chi phí của xe này?`)) {
+                              await db.vehicles.delete(v.id);
+                              await db.refuelings.where('vehicleId').equals(v.id).delete();
+                              await db.expenses.where('vehicleId').equals(v.id).delete();
+                            }
+                          }}
+                          className="text-[10px] text-rose-500 hover:text-rose-400 font-bold px-2.5 py-1 hover:bg-rose-950/20 rounded-lg transition"
+                        >
+                          Xóa
+                        </button>
+                      )
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
 
-            {/* Add New Vehicle Form */}
+            {/* Add/Edit New Vehicle Form */}
             <form onSubmit={handleAddVehicle} className="space-y-3 pt-3 border-t border-slate-900">
-              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider pl-1">Thêm phương tiện mới</p>
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider pl-1">
+                {editingVehicleId ? 'Sửa thông tin xe' : 'Thêm phương tiện mới'}
+              </p>
               <div className="flex flex-col gap-2">
                 <input
                   type="text"
@@ -437,13 +475,29 @@ export default function App() {
                 />
               </div>
               
-              <button
-                type="submit"
-                className="w-full bg-brand-500 hover:bg-brand-600 text-white font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center gap-1 active:scale-95 transition"
-              >
-                <Plus className="w-4 h-4" />
-                Thêm xe mới
-              </button>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  type="submit"
+                  className="w-full bg-brand-500 hover:bg-brand-600 text-white font-semibold py-2.5 rounded-xl text-sm flex items-center justify-center gap-1 active:scale-95 transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  {editingVehicleId ? 'Lưu cập nhật' : 'Thêm xe mới'}
+                </button>
+                {editingVehicleId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingVehicleId(null);
+                      setNewVehicleName('');
+                      setNewVehiclePlate('');
+                      setNewVehicleTankCapacity('');
+                    }}
+                    className="w-full bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold py-2 rounded-xl text-sm transition active:scale-95"
+                  >
+                    Hủy chỉnh sửa
+                  </button>
+                )}
+              </div>
             </form>
           </div>
         </div>
