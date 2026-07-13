@@ -2,6 +2,28 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.1.0] - 2026-07-13
+
+### Add (Thêm mới)
+- Tích hợp **Popup Thông báo cập nhật PWA chủ động** (PWA Update Prompt): Tự động phát hiện phiên bản mới nhất trên server và hiển thị Toast nổi bật hỏi người dùng nhấp cập nhật tức thì.
+- Thêm trường **Dung tích bình xăng (Lít)** khi tạo xe mới và bổ sung tính năng **Chỉnh sửa thông tin xe (Sửa xe)** ngay tại Modal quản lý phương tiện để cập nhật thông số an toàn, giữ nguyên vẹn dữ liệu lịch sử liên kết.
+- Tích hợp hệ thống **Cảnh báo nhập liệu thông minh thời gian thực**:
+  - Cảnh báo lượng xăng đổ vượt quá dung tích bình xăng thực tế của xe.
+  - Cảnh báo quãng đường di chuyển giữa 2 lần đổ quá dài, tự động tính toán ngưỡng thích ứng dựa trên loại xe và dung tích bình xăng.
+  - Cảnh báo chỉ số Odometer bị đảo lộn trình tự thời gian (nhập nhầm ODO).
+  - Đánh dấu **Nhãn cảnh báo màu cam ⚠️** kèm lý do cụ thể trực tiếp bên cạnh dòng lịch sử bị cảnh báo.
+- Thiết lập **Floating PWA Install Banner** thông minh: Tự động nhận diện thiết bị Android/Desktop để hiện nút cài đặt trực tiếp, nhận diện iOS để hướng dẫn nút Share Safari, kiểm tra trạng thái Standalone để tránh làm phiền và hỗ trợ cơ chế Snooze ẩn banner 7 ngày nếu bị đóng.
+
+### Changed (Thay đổi)
+- **Đồng bộ hóa Xe hiện hành**: Tên xe và icon loại xe (Xe máy `Bike` / Ô tô `Car`) hiển thị linh hoạt ngoài Header và lưu trữ ghi nhớ qua `localStorage`.
+- **Bộ lọc đa phương tiện**: Toàn bộ đồ thị, phân tích chi tiêu trên Dashboard và danh sách Lịch sử đổ xăng / Chi phí khác sẽ được lọc hiển thị chính xác theo xe hiện hành đang chọn.
+- **Thay đổi biểu tượng tiền tệ**: Đổi toàn bộ icon Dollar (`DollarSign`) cũ sang biểu tượng xấp đồng xu xếp chồng (`Coins`) tăng tính thẩm mỹ và thân thiện với tiền tệ Việt Nam.
+- **Tối ưu hóa UI cuộn trang**: Chuyển đổi nền của Header và Bottom Tabbar sang màu đặc (**Solid bg-slate-900** 100%) để triệt tiêu lỗi chồng chữ khi cuộn trang dài.
+- Tự động dọn dẹp xe mẫu "Honda Vision" mặc định và các dữ liệu liên kết mẫu khi người dùng thêm chiếc xe cá nhân thật đầu tiên.
+
+### Fixed (Sửa lỗi)
+- **Khắc phục lỗ hổng bảo mật**: Gỡ bỏ tệp tin cấu hình môi trường `.env` khỏi bộ nhớ đệm Git Tracking và thêm vào `.gitignore` để tránh rò rỉ Client ID khi repository chuyển sang chế độ Public.
+
 ## 🚀 [1.0.0] - 2026-07-13
 
 ### Add (Thêm mới)
