@@ -2,6 +2,13 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.1.3] - 2026-07-13
+
+### Changed (Thay đổi)
+- Đồng bộ và cập nhật hệ thống tài liệu hướng dẫn tại thư mục `docs/`:
+  - [deployment.md](file:///d:/AI-Fuel-Tracker/docs/deployment.md): Bổ sung lưu ý về cơ chế nạp Client ID mặc định tự động khi deploy qua GitHub Actions.
+  - [security.md](file:///d:/AI-Fuel-Tracker/docs/security.md): Làm rõ tính an toàn và bảo mật của việc thiết lập Client ID mặc định fallback (kết hợp với cơ chế Authorized Origins và Redirect URIs khóa miền).
+
 ## 🚀 [1.1.2] - 2026-07-13
 
 ### Fixed (Sửa lỗi)

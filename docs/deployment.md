@@ -6,8 +6,12 @@ Tài liệu này hướng dẫn bạn cách chạy dự án ở môi trường c
 
 ## 1. Cấu hình môi trường (`.env`)
 Dự án sử dụng file `.env` ở thư mục gốc để cấu hình Google OAuth Client ID dùng cho tính năng đồng bộ.
+
+> [!NOTE]
+> Ứng dụng đã được tích hợp sẵn Client ID mặc định của dự án làm giá trị fallback trực tiếp trong mã nguồn dịch vụ. Nếu bạn deploy thông qua hệ thống tự động GitHub Actions, ứng dụng vẫn tự động nhận diện và sử dụng Client ID này để tính năng đồng bộ hoạt động bình thường mà không cần có file `.env`. Bạn chỉ cần tạo file `.env` cục bộ nếu muốn thử nghiệm phát triển (local) hoặc tùy biến sử dụng Client ID của riêng bạn.
+
 > [!WARNING]
-> Tệp `.env` chứa mã cấu hình nhạy cảm và đã được đưa vào [.gitignore](file:///d:/AI-Fuel-Tracker/.gitignore). **Tuyệt đối không bao giờ** được commit hoặc push file `.env` thực tế lên các kho chứa mã nguồn công khai (Public GitHub repositories).
+> Tệp `.env` chứa mã cấu hình cá nhân và đã được đưa vào [.gitignore](file:///d:/AI-Fuel-Tracker/.gitignore). **Tuyệt đối không bao giờ** được commit hoặc push file `.env` thực tế lên các kho chứa mã nguồn công khai (Public GitHub repositories) để đảm bảo an toàn.
 
 Mẫu cấu hình (`.env.example`):
 ```env

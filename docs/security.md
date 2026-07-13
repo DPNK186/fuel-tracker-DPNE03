@@ -6,8 +6,9 @@
 
 ## 1. Bảo mật file cấu hình nhạy cảm (`.env`) khi Public Mã nguồn
 Dự án sử dụng Google Client ID phục vụ cho việc tích hợp cổng Google Drive. Khi bạn đổi Repository sang chế độ **Công khai (Public)**:
-* **Hành động bảo vệ**: File `.env` chứa Client ID và các biến môi trường nhạy cảm khác đã được loại bỏ hoàn toàn khỏi Git Tracking bằng lệnh `git rm --cached .env` và được khai báo bỏ qua trong [.gitignore](file:///d:/AI-Fuel-Tracker/.gitignore).
-* **Kết quả**: File `.env` chỉ tồn tại duy nhất ở máy tính cá nhân local của nhà phát triển để chạy thử nghiệm, tránh tuyệt đối việc bị rò rỉ mã cấu hình lên Internet.
+* **Hành động bảo vệ**: File `.env` thực tế đã được loại bỏ hoàn toàn khỏi Git Tracking bằng lệnh `git rm --cached .env` và được khai báo bỏ qua trong [.gitignore](file:///d:/AI-Fuel-Tracker/.gitignore).
+* **Cơ chế fallback mặc định an toàn**: Để đảm bảo ứng dụng deploy tự động bằng GitHub Actions (nơi không nạp file `.env`) vẫn hoạt động trơn tru, mã nguồn được thiết lập giá trị Client ID mặc định làm fallback. 
+* **Tính bảo mật của Client ID**: Google Client ID thực tế chỉ đóng vai trò định danh ứng dụng ở client-side (không phải thông tin mật như Client Secret hay API Key). Cơ chế đăng nhập Google OAuth 2.0 kiểm soát và bảo vệ chặt chẽ thông qua danh sách **Authorized JavaScript Origins** và **Authorized Redirect URIs** cấu hình trực tiếp trên Google Cloud Console (xem chi tiết mục 2 dưới đây). Vì vậy, việc cấu hình mặc định này hoàn toàn an toàn và tuân thủ các thực hành bảo mật chuẩn của Google.
 
 ---
 
