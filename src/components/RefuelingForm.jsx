@@ -3,11 +3,11 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { Fuel, Calendar, Compass, DollarSign, PlusCircle, Trash2, Edit2, TrendingUp, X } from 'lucide-react';
 
-export default function RefuelingForm({ expandForm, setExpandForm }) {
+export default function RefuelingForm({ currentVehicleId, expandForm, setExpandForm }) {
   const vehicles = useLiveQuery(() => db.vehicles.toArray());
   const refuelings = useLiveQuery(() => db.refuelings.orderBy('odometer').reverse().toArray());
 
-  const [vehicleId, setVehicleId] = useState('');
+  const [vehicleId, setVehicleId] = useState(currentVehicleId || '');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [odometer, setOdometer] = useState('');
   const [liters, setLiters] = useState('');
@@ -20,12 +20,12 @@ export default function RefuelingForm({ expandForm, setExpandForm }) {
 
   const dateInputRef = useRef(null);
 
-  // Chọn xe mặc định khi tải trang
+  // Đồng bộ mặc định xe của Form theo xe hiện hành được chọn ngoài Header
   useEffect(() => {
-    if (vehicles && vehicles.length > 0 && !vehicleId) {
-      setVehicleId(vehicles[0].id.toString());
+    if (currentVehicleId) {
+      setVehicleId(currentVehicleId);
     }
-  }, [vehicles, vehicleId]);
+  }, [currentVehicleId]);
 
   // Hàm chuyển YYYY-MM-DD sang DD/MM/YYYY
   const formatDateToDisplay = (dateStr) => {
@@ -34,11 +34,14 @@ export default function RefuelingForm({ expandForm, setExpandForm }) {
     return `${day}/${month}/${year}`;
   };
 
-  // Tính toán hiệu suất (km/L) cho từng bản ghi trong lịch sử theo thuật toán cộng dồn đầy bình
+  // Tính toán hiệu suất (km/L) cho từng bản ghi lịch sử đổ xăng của xe hiện hành
   const processedRefuelings = useMemo(() => {
-    if (!refuelings) return [];
+    if (!refuelings || !currentVehicleId) return [];
 
-    const sorted = [...refuelings].sort((a, b) => a.odometer - b.odometer);
+    // Chỉ lọc các bản ghi đổ xăng thuộc về xe hiện tại đang chọn
+    const activeLogs = refuelings.filter(log => log.vehicleId === parseInt(currentVehicleId));
+
+    const sorted = [...activeLogs].sort((a, b) => a.odometer - b.odometer);
     const effMap = new Map();
 
     let accumulatedLiters = 0;
@@ -65,11 +68,11 @@ export default function RefuelingForm({ expandForm, setExpandForm }) {
       }
     }
 
-    return refuelings.map(log => ({
+    return activeLogs.map(log => ({
       ...log,
       efficiency: effMap.get(log.id) || null
     }));
-  }, [refuelings]);
+  }, [refuelings, currentVehicleId]);
 
   // Tự động tính toán chi phí khi có thay đổi
   const handleLitersChange = (val) => {
@@ -129,7 +132,7 @@ export default function RefuelingForm({ expandForm, setExpandForm }) {
       setFullTank(true);
       setNotes('');
       setDate(new Date().toISOString().split('T')[0]);
-      setExpandForm(false); // Thu gọn lại
+      setExpandForm(false);
     } catch (err) {
       console.error('Error saving refueling log:', err);
     }
@@ -146,7 +149,7 @@ export default function RefuelingForm({ expandForm, setExpandForm }) {
     setFuelType(log.fuelType || 'E10 Ron 95');
     setFullTank(log.fullTank !== false);
     setNotes(log.notes || '');
-    setExpandForm(true); // Tự động mở rộng khi bấm sửa
+    setExpandForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -158,7 +161,7 @@ export default function RefuelingForm({ expandForm, setExpandForm }) {
 
   return (
     <div className="space-y-6 max-w-lg mx-auto pb-24">
-      {/* Form Nhập liệu (Có hiệu ứng hiển thị tùy thuộc vào trạng thái expandForm) */}
+      {/* Form Nhập liệu */}
       {expandForm ? (
         <div className="glass-card rounded-3xl p-6 animate-fade-in border-brand-500/20">
           <div className="flex justify-between items-center mb-6">
@@ -329,7 +332,7 @@ export default function RefuelingForm({ expandForm, setExpandForm }) {
           </form>
         </div>
       ) : (
-        /* Nút Thêm mới nổi bật khi Form đang ẩn */
+        /* Nút thêm mới */
         <button
           onClick={() => setExpandForm(true)}
           className="w-full bg-gradient-to-r from-brand-500 to-emerald-600 hover:from-brand-600 hover:to-emerald-700 text-white font-bold py-3 px-4 rounded-2xl shadow-lg shadow-brand-500/20 flex items-center justify-center gap-2 active:scale-95 transition-all duration-100 animate-fade-in"
@@ -343,8 +346,8 @@ export default function RefuelingForm({ expandForm, setExpandForm }) {
       <div className="glass-card rounded-3xl p-6 animate-fade-in" style={{ animationDelay: '0.05s' }}>
         <h3 className="text-lg font-bold mb-4">Lịch sử đổ xăng</h3>
         <div className="space-y-3">
-          {!processedRefuelings || processedRefuelings.length === 0 ? (
-            <p className="text-sm text-slate-500 text-center py-6">Chưa có lịch sử đổ xăng nào được ghi lại</p>
+          {processedRefuelings.length === 0 ? (
+            <p className="text-sm text-slate-500 text-center py-6">Chưa có lịch sử đổ xăng nào của xe này</p>
           ) : (
             processedRefuelings.map((log) => (
               <div
@@ -373,7 +376,6 @@ export default function RefuelingForm({ expandForm, setExpandForm }) {
                     <span>Lượng: {log.liters} L ({log.fuelType || 'E10 Ron 95'})</span>
                     {log.pricePerLiter > 0 && <span>Đơn giá: {log.pricePerLiter.toLocaleString('vi-VN')} đ/L</span>}
                   </div>
-                  {/* Hiển thị Trung bình thay cho Hiệu suất đợt này */}
                   {log.efficiency && (
                     <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 mt-1 bg-emerald-950/20 px-2 py-1 rounded-lg w-max border border-emerald-900/30">
                       <TrendingUp className="w-3.5 h-3.5" />

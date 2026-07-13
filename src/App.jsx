@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import Dashboard from './components/Dashboard';
@@ -11,6 +11,7 @@ import {
   Wrench, 
   Cloud, 
   Car, 
+  Bike, // Thêm Bike icon cho xe máy
   Plus, 
   X, 
   Wifi, 
@@ -28,6 +29,7 @@ export default function App() {
 
   // Xe
   const vehicles = useLiveQuery(() => db.vehicles.toArray());
+  const [currentVehicleId, setCurrentVehicleId] = useState(localStorage.getItem('active_vehicle_id') || '');
   const [newVehicleName, setNewVehicleName] = useState('');
   const [newVehicleType, setNewVehicleType] = useState('Motorcycle');
   const [newVehiclePlate, setNewVehiclePlate] = useState('');
@@ -45,11 +47,41 @@ export default function App() {
     };
   }, []);
 
+  // Thiết lập xe hiện hành mặc định khi tải trang
+  useEffect(() => {
+    if (vehicles && vehicles.length > 0) {
+      const isValid = vehicles.some(v => v.id.toString() === currentVehicleId);
+      if (!currentVehicleId || !isValid) {
+        const defaultId = vehicles[0].id.toString();
+        setCurrentVehicleId(defaultId);
+        localStorage.setItem('active_vehicle_id', defaultId);
+      }
+    }
+  }, [vehicles, currentVehicleId]);
+
+  const handleSelectVehicle = (id) => {
+    setCurrentVehicleId(id.toString());
+    localStorage.setItem('active_vehicle_id', id.toString());
+    setShowVehicleModal(false);
+  };
+
   const handleAddVehicle = async (e) => {
     e.preventDefault();
     if (!newVehicleName) return;
 
-    await db.vehicles.add({
+    // Kiểm tra xem trong DB hiện tại có xe mẫu mặc định biển số 29A-123.45 hay không
+    const sampleVehicle = vehicles?.find(v => v.plateNumber === '29A-123.45');
+
+    // Nếu có xe mẫu và người dùng đang bắt đầu thêm xe thật của họ
+    if (sampleVehicle) {
+      const sampleId = sampleVehicle.id;
+      // Tự động xóa sạch xe mẫu cùng các dữ liệu mẫu liên kết
+      await db.vehicles.delete(sampleId);
+      await db.refuelings.where('vehicleId').equals(sampleId).delete();
+      await db.expenses.where('vehicleId').equals(sampleId).delete();
+    }
+
+    const newId = await db.vehicles.add({
       name: newVehicleName,
       type: newVehicleType,
       plateNumber: newVehiclePlate
@@ -57,11 +89,21 @@ export default function App() {
 
     setNewVehicleName('');
     setNewVehiclePlate('');
+    
+    // Tự động đặt xe mới làm xe hiện hành
+    setCurrentVehicleId(newId.toString());
+    localStorage.setItem('active_vehicle_id', newId.toString());
+    
     setShowVehicleModal(false);
   };
 
+  // Xác định thông tin xe hiện tại đang chọn
+  const activeVehicle = useMemo(() => {
+    if (!vehicles || !currentVehicleId) return null;
+    return vehicles.find(v => v.id.toString() === currentVehicleId) || vehicles[0];
+  }, [vehicles, currentVehicleId]);
+
   return (
-    /* Đổi max-w-md thành w-full max-w-md sm:max-w-xl md:max-w-2xl để co giãn responsive mượt mà trên desktop */
     <div className="min-h-screen bg-slate-950 flex flex-col w-full max-w-md sm:max-w-xl md:max-w-2xl mx-auto relative shadow-2xl border-x border-slate-900 transition-all duration-300">
       {/* Top Header */}
       <header className="sticky top-0 z-50 glass-card px-5 py-3.5 flex items-center justify-between border-b border-slate-900 rounded-b-2xl">
@@ -93,13 +135,18 @@ export default function App() {
             )}
           </div>
 
-          {/* Manage Vehicle Button */}
+          {/* Manage Vehicle Button - Đồng bộ icon & Tên xe hiện đang chọn */}
           <button 
             onClick={() => setShowVehicleModal(true)}
-            className="bg-slate-900 hover:bg-slate-800 p-2 rounded-xl text-slate-300 hover:text-white border border-slate-800 transition"
-            title="Quản lý xe"
+            className="bg-slate-900 hover:bg-slate-800 py-1.5 px-3 rounded-xl text-slate-300 hover:text-white border border-slate-800 transition flex items-center gap-1.5 text-xs font-bold shadow-md shadow-black/30 active:scale-95"
+            title="Thay đổi / Quản lý phương tiện"
           >
-            <Car className="w-4 h-4" />
+            {activeVehicle?.type === 'Motorcycle' ? (
+              <Bike className="w-4 h-4 text-emerald-400" />
+            ) : (
+              <Car className="w-4 h-4 text-sky-400" />
+            )}
+            <span className="max-w-[80px] truncate">{activeVehicle?.name || 'Chọn xe'}</span>
           </button>
         </div>
       </header>
@@ -108,6 +155,7 @@ export default function App() {
       <main className="flex-1 px-4 py-5 overflow-y-auto">
         {activeTab === 'dashboard' && (
           <Dashboard 
+            currentVehicleId={currentVehicleId}
             onQuickAction={(tab, expand) => {
               setActiveTab(tab);
               if (tab === 'refueling') setExpandRefuel(expand);
@@ -118,12 +166,14 @@ export default function App() {
         )}
         {activeTab === 'refueling' && (
           <RefuelingForm 
+            currentVehicleId={currentVehicleId}
             expandForm={expandRefuel} 
             setExpandForm={setExpandRefuel} 
           />
         )}
         {activeTab === 'expenses' && (
           <ExpenseForm 
+            currentVehicleId={currentVehicleId}
             expandForm={expandExpense} 
             setExpandForm={setExpandExpense} 
           />
@@ -131,7 +181,7 @@ export default function App() {
         {activeTab === 'sync' && <SyncBackup />}
       </main>
 
-      {/* Navigation Tabbar - Cập nhật max-w đồng bộ với container cha */}
+      {/* Navigation Tabbar */}
       <nav className="fixed bottom-0 left-0 right-0 max-w-md sm:max-w-xl md:max-w-2xl mx-auto glass-card border-t border-slate-900 rounded-t-3xl tab-bar-safe z-50 transition-all duration-300">
         <div className="grid grid-cols-4 py-2">
           {/* Dashboard Tab */}
@@ -156,7 +206,7 @@ export default function App() {
             <span className="text-[10px] font-bold">Đổ xăng</span>
           </button>
 
-          {/* Expense Tab - Màu đỏ/cam active */}
+          {/* Expense Tab */}
           <button
             onClick={() => setActiveTab('expenses')}
             className={`flex flex-col items-center justify-center py-1 transition ${
@@ -187,7 +237,7 @@ export default function App() {
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold flex items-center gap-2">
                 <Car className="w-5 h-5 text-brand-400" />
-                Quản lý phương tiện
+                Chọn & Quản lý xe
               </h3>
               <button 
                 onClick={() => setShowVehicleModal(false)}
@@ -198,21 +248,50 @@ export default function App() {
             </div>
 
             {/* List Vehicles */}
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider pl-1">Xe hiện tại</p>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider pl-1">Danh sách xe của bạn</p>
               {vehicles?.map(v => (
-                <div key={v.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3 flex justify-between items-center">
-                  <div>
-                    <p className="text-sm font-bold text-slate-100">{v.name}</p>
-                    <p className="text-[10px] text-slate-500">Biển số: {v.plateNumber || 'Không có'} • Loại: {v.type === 'Motorcycle' ? 'Xe máy' : 'Ô tô'}</p>
+                <div 
+                  key={v.id} 
+                  onClick={() => handleSelectVehicle(v.id)}
+                  className={`bg-slate-900 border rounded-xl p-3 flex justify-between items-center cursor-pointer transition active:scale-98 ${
+                    v.id.toString() === currentVehicleId 
+                      ? 'border-brand-500 bg-brand-500/5' 
+                      : 'border-slate-800 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex-1 min-w-0 pr-2">
+                    <div className="flex items-center gap-2">
+                      {v.type === 'Motorcycle' ? (
+                        <Bike className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                      ) : (
+                        <Car className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                      )}
+                      <p className="text-sm font-bold text-slate-100 truncate">{v.name}</p>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">Biển số: {v.plateNumber || 'Không có'} • Loại: {v.type === 'Motorcycle' ? 'Xe máy' : 'Ô tô'}</p>
                   </div>
-                  {vehicles.length > 1 && (
-                    <button 
-                      onClick={() => db.vehicles.delete(v.id)}
-                      className="text-xs text-rose-500 hover:text-rose-400 font-medium px-2 py-1 hover:bg-rose-950/20 rounded-md transition"
-                    >
-                      Xóa
-                    </button>
+                  
+                  {v.id.toString() === currentVehicleId ? (
+                    <span className="text-[9px] font-bold text-brand-400 bg-brand-500/10 px-2 py-0.5 rounded-md border border-brand-500/20">
+                      Đang chọn
+                    </span>
+                  ) : (
+                    vehicles.length > 1 && (
+                      <button 
+                        onClick={async (e) => {
+                          e.stopPropagation(); // Ngăn chọn xe khi bấm xóa
+                          if (confirm(`Bạn có chắc chắn muốn xóa xe "${v.name}" và toàn bộ dữ liệu đổ xăng, chi phí của xe này?`)) {
+                            await db.vehicles.delete(v.id);
+                            await db.refuelings.where('vehicleId').equals(v.id).delete();
+                            await db.expenses.where('vehicleId').equals(v.id).delete();
+                          }
+                        }}
+                        className="text-[10px] text-rose-500 hover:text-rose-400 font-bold px-2.5 py-1 hover:bg-rose-950/20 rounded-lg transition"
+                      >
+                        Xóa
+                      </button>
+                    )
                   )}
                 </div>
               ))}

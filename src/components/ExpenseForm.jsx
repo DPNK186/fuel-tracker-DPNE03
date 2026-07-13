@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { Wrench, Calendar, Compass, DollarSign, PlusCircle, Trash2, Edit2, Camera, X } from 'lucide-react';
@@ -13,11 +13,11 @@ const CATEGORIES = [
   'Khác'
 ];
 
-export default function ExpenseForm({ expandForm, setExpandForm }) {
+export default function ExpenseForm({ currentVehicleId, expandForm, setExpandForm }) {
   const vehicles = useLiveQuery(() => db.vehicles.toArray());
   const expenses = useLiveQuery(() => db.expenses.orderBy('date').reverse().toArray());
 
-  const [vehicleId, setVehicleId] = useState('');
+  const [vehicleId, setVehicleId] = useState(currentVehicleId || '');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [amount, setAmount] = useState('');
@@ -29,12 +29,18 @@ export default function ExpenseForm({ expandForm, setExpandForm }) {
 
   const dateInputRef = useRef(null);
 
-  // Chọn xe mặc định khi tải trang
+  // Đồng bộ mặc định xe của Form theo xe hiện hành được chọn ngoài Header
   useEffect(() => {
-    if (vehicles && vehicles.length > 0 && !vehicleId) {
-      setVehicleId(vehicles[0].id.toString());
+    if (currentVehicleId) {
+      setVehicleId(currentVehicleId);
     }
-  }, [vehicles, vehicleId]);
+  }, [currentVehicleId]);
+
+  // Lọc lịch sử chi phí theo phương tiện hiện hành được chọn
+  const activeExpenses = useMemo(() => {
+    if (!expenses || !currentVehicleId) return [];
+    return expenses.filter(log => log.vehicleId === parseInt(currentVehicleId));
+  }, [expenses, currentVehicleId]);
 
   // Hàm chuyển YYYY-MM-DD sang DD/MM/YYYY
   const formatDateToDisplay = (dateStr) => {
@@ -107,7 +113,7 @@ export default function ExpenseForm({ expandForm, setExpandForm }) {
       setImage(null);
       setCategory(CATEGORIES[0]);
       setDate(new Date().toISOString().split('T')[0]);
-      setExpandForm(false); // Thu gọn form lại sau khi lưu
+      setExpandForm(false);
     } catch (err) {
       console.error('Error saving expense log:', err);
     }
@@ -122,7 +128,7 @@ export default function ExpenseForm({ expandForm, setExpandForm }) {
     setOdometer(log.odometer ? log.odometer.toString() : '');
     setNotes(log.notes || '');
     setImage(log.image || null);
-    setExpandForm(true); // Mở rộng form khi sửa
+    setExpandForm(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -295,7 +301,7 @@ export default function ExpenseForm({ expandForm, setExpandForm }) {
           </form>
         </div>
       ) : (
-        /* Nút thêm mới khi form đang ẩn */
+        /* Nút thêm mới */
         <button
           onClick={() => setExpandForm(true)}
           className="w-full bg-gradient-to-r from-rose-500 to-orange-600 hover:from-rose-600 hover:to-orange-700 text-white font-bold py-3 px-4 rounded-2xl shadow-lg shadow-rose-500/20 flex items-center justify-center gap-2 active:scale-95 transition-all duration-100 animate-fade-in"
@@ -309,10 +315,10 @@ export default function ExpenseForm({ expandForm, setExpandForm }) {
       <div className="glass-card rounded-3xl p-6 animate-fade-in" style={{ animationDelay: '0.05s' }}>
         <h3 className="text-lg font-bold mb-4">Chi phí khác</h3>
         <div className="space-y-3">
-          {!expenses || expenses.length === 0 ? (
-            <p className="text-sm text-slate-500 text-center py-6">Chưa có chi phí nào được ghi lại</p>
+          {activeExpenses.length === 0 ? (
+            <p className="text-sm text-slate-500 text-center py-6">Chưa có chi phí nào của xe này được ghi lại</p>
           ) : (
-            expenses.map((log) => (
+            activeExpenses.map((log) => (
               <div
                 key={log.id}
                 className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex justify-between items-center hover:border-slate-700 transition"
@@ -338,7 +344,6 @@ export default function ExpenseForm({ expandForm, setExpandForm }) {
                 </div>
 
                 <div className="flex items-center gap-2 flex-shrink-0">
-                  {/* Thumbnail Ảnh hóa đơn */}
                   {log.image && (
                     <button
                       onClick={() => setZoomedImage(log.image)}

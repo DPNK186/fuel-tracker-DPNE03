@@ -1,22 +1,39 @@
 import React, { useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Fuel, DollarSign, Compass, TrendingUp, BarChart3, Car, Plus, Sparkles } from 'lucide-react';
+import { Fuel, DollarSign, Compass, TrendingUp, BarChart3, Car, Bike, Plus, Sparkles } from 'lucide-react';
 
-export default function Dashboard({ onQuickAction, onOpenVehicleManager }) {
+export default function Dashboard({ currentVehicleId, onQuickAction, onOpenVehicleManager }) {
   const refuelings = useLiveQuery(() => db.refuelings.orderBy('odometer').toArray());
   const expenses = useLiveQuery(() => db.expenses.orderBy('date').toArray());
   const vehicles = useLiveQuery(() => db.vehicles.toArray());
 
-  // 1. Tính toán hiệu suất tiêu thụ nhiên liệu (km/L) cho từng điểm đổ đầy bình
+  // Lọc dữ liệu đổ xăng và chi phí theo phương tiện hiện hành được chọn
+  const activeRefuelings = useMemo(() => {
+    if (!refuelings || !currentVehicleId) return [];
+    return refuelings.filter(r => r.vehicleId === parseInt(currentVehicleId));
+  }, [refuelings, currentVehicleId]);
+
+  const activeExpenses = useMemo(() => {
+    if (!expenses || !currentVehicleId) return [];
+    return expenses.filter(e => e.vehicleId === parseInt(currentVehicleId));
+  }, [expenses, currentVehicleId]);
+
+  // Xác định phương tiện hiện hành
+  const activeVehicle = useMemo(() => {
+    if (!vehicles || !currentVehicleId) return null;
+    return vehicles.find(v => v.id.toString() === currentVehicleId) || vehicles[0];
+  }, [vehicles, currentVehicleId]);
+
+  // 1. Tính toán hiệu suất tiêu thụ nhiên liệu (km/L) cho từng điểm đổ đầy bình của xe hiện hành
   const efficiencyPoints = useMemo(() => {
-    if (!refuelings || refuelings.length < 2) return [];
+    if (activeRefuelings.length < 2) return [];
 
     const points = [];
     let accumulatedLiters = 0;
     let lastFullRefueling = null;
 
-    const sorted = [...refuelings].sort((a, b) => a.odometer - b.odometer);
+    const sorted = [...activeRefuelings].sort((a, b) => a.odometer - b.odometer);
 
     for (let i = 0; i < sorted.length; i++) {
       const item = sorted[i];
@@ -47,11 +64,11 @@ export default function Dashboard({ onQuickAction, onOpenVehicleManager }) {
     }
 
     return points;
-  }, [refuelings]);
+  }, [activeRefuelings]);
 
-  // 2. Tính toán các thống kê tổng quan
+  // 2. Tính toán các thống kê tổng quan của xe hiện hành
   const stats = useMemo(() => {
-    if (!refuelings || !expenses) return {
+    if (activeRefuelings.length === 0 && activeExpenses.length === 0) return {
       totalFuelCost: 0,
       totalExpenseCost: 0,
       totalCost: 0,
@@ -60,15 +77,15 @@ export default function Dashboard({ onQuickAction, onOpenVehicleManager }) {
       avgEfficiency: 0
     };
 
-    const totalFuelCost = refuelings.reduce((sum, item) => sum + item.totalCost, 0);
-    const totalExpenseCost = expenses.reduce((sum, item) => sum + item.amount, 0);
+    const totalFuelCost = activeRefuelings.reduce((sum, item) => sum + item.totalCost, 0);
+    const totalExpenseCost = activeExpenses.reduce((sum, item) => sum + item.amount, 0);
     const totalCost = totalFuelCost + totalExpenseCost;
-    const totalLiters = refuelings.reduce((sum, item) => sum + item.liters, 0);
+    const totalLiters = activeRefuelings.reduce((sum, item) => sum + item.liters, 0);
 
     let avgEfficiency = 0;
     let totalDistanceForEfficiency = 0;
 
-    const sortedRefuelings = [...refuelings].sort((a, b) => a.odometer - b.odometer);
+    const sortedRefuelings = [...activeRefuelings].sort((a, b) => a.odometer - b.odometer);
     const fullRefuelings = sortedRefuelings.filter(r => r.fullTank !== false);
 
     if (fullRefuelings.length >= 2) {
@@ -100,7 +117,7 @@ export default function Dashboard({ onQuickAction, onOpenVehicleManager }) {
       distance: totalDistanceForEfficiency,
       avgEfficiency: avgEfficiency ? parseFloat(avgEfficiency.toFixed(2)) : 0
     };
-  }, [refuelings, expenses]);
+  }, [activeRefuelings, activeExpenses]);
 
   // 3. Chuẩn bị dữ liệu vẽ biểu đồ hiệu suất (km/L)
   const chartData = useMemo(() => {
@@ -144,10 +161,9 @@ export default function Dashboard({ onQuickAction, onOpenVehicleManager }) {
     return { points, pathD, areaD, width, height, padding };
   }, [efficiencyPoints]);
 
-  // Kiểm tra xem ứng dụng có trống hoàn toàn phương tiện hay không
   const isNoVehicles = !vehicles || vehicles.length === 0;
 
-  // Kiểm tra xem ứng dụng chỉ có đúng duy nhất xe mẫu mặc định ban đầu
+  // Kiểm tra xem ứng dụng chỉ có đúng xe mẫu mặc định ban đầu
   const isOnlySampleVehicle = useMemo(() => {
     if (!vehicles || vehicles.length !== 1) return false;
     return vehicles[0].plateNumber === '29A-123.45';
@@ -156,7 +172,6 @@ export default function Dashboard({ onQuickAction, onOpenVehicleManager }) {
   if (isNoVehicles) {
     return (
       <div className="space-y-6 max-w-lg mx-auto pb-24">
-        {/* Khối Empty State lớn khi người dùng xóa hết xe mẫu */}
         <div className="glass-card rounded-3xl p-8 text-center space-y-5 animate-fade-in border-dashed border-slate-800">
           <div className="bg-slate-900/60 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto text-slate-500 border border-slate-800">
             <Car className="w-8 h-8" />
@@ -181,7 +196,7 @@ export default function Dashboard({ onQuickAction, onOpenVehicleManager }) {
 
   return (
     <div className="space-y-6 max-w-lg mx-auto pb-24">
-      {/* Banner Onboarding chào mừng/hướng dẫn thêm xe riêng khi dùng xe mẫu */}
+      {/* Banner Onboarding gợi ý thêm xe riêng khi dùng xe mẫu */}
       {isOnlySampleVehicle && (
         <div 
           onClick={onOpenVehicleManager}
@@ -202,19 +217,23 @@ export default function Dashboard({ onQuickAction, onOpenVehicleManager }) {
         </div>
       )}
 
-      {/* Vehicle Info Card */}
+      {/* Vehicle Info Card - Đồng bộ động theo xe hiện tại */}
       <div className="glass-card rounded-3xl p-5 flex items-center justify-between animate-fade-in">
         <div className="flex items-center gap-3">
           <div className="bg-brand-500/10 p-3 rounded-2xl text-brand-400">
-            <Car className="w-6 h-6" />
+            {activeVehicle?.type === 'Motorcycle' ? (
+              <Bike className="w-6 h-6 text-emerald-400" />
+            ) : (
+              <Car className="w-6 h-6 text-sky-400" />
+            )}
           </div>
           <div>
-            <h3 className="font-bold text-slate-100">{vehicles?.[0]?.name || 'Xe của tôi'}</h3>
-            <p className="text-xs text-slate-400">{vehicles?.[0]?.plateNumber || 'Chưa cập nhật biển số'}</p>
+            <h3 className="font-bold text-slate-100">{activeVehicle?.name || 'Xe của tôi'}</h3>
+            <p className="text-xs text-slate-400">{activeVehicle?.plateNumber || 'Chưa cập nhật biển số'}</p>
           </div>
         </div>
         <span className="text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full">
-          Hoạt động
+          {activeVehicle?.type === 'Motorcycle' ? 'Xe máy' : 'Ô tô'}
         </span>
       </div>
 
@@ -278,7 +297,7 @@ export default function Dashboard({ onQuickAction, onOpenVehicleManager }) {
             <span className="text-xs font-normal text-slate-400">Lít</span>
           </div>
           <div className="text-[10px] text-slate-500 mt-1">
-            Tổng số lần đổ: {refuelings?.length || 0}
+            Tổng số lần đổ: {activeRefuelings?.length || 0}
           </div>
         </div>
 
