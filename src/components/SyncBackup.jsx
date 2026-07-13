@@ -49,20 +49,26 @@ export default function SyncBackup() {
 
   // Thực hiện ghi dữ liệu đã restore vào Dexie
   const importToDB = async (data) => {
-    if (!data.vehicles || !data.refuelings || !data.expenses) {
-      throw new Error('Định dạng dữ liệu không hợp lệ');
+    // 1. Xác thực cấu trúc dữ liệu nghiêm ngặt (Schema Validation) trước khi xóa dữ liệu cũ
+    if (!data || data.version !== 1 || !Array.isArray(data.vehicles) || !Array.isArray(data.refuelings) || !Array.isArray(data.expenses)) {
+      throw new Error('Định dạng dữ liệu không hợp lệ hoặc thiếu thông tin phiên bản.');
     }
 
-    // Xóa dữ liệu cũ
+    // 2. Thực hiện xóa và thêm mới trong một Transaction để đảm bảo tính nguyên tử
     await db.transaction('rw', db.vehicles, db.refuelings, db.expenses, async () => {
-      await db.vehicles.clear();
-      await db.refuelings.clear();
-      await db.expenses.clear();
+      // Xóa song song dữ liệu cũ (Tối ưu hóa hiệu năng)
+      await Promise.all([
+        db.vehicles.clear(),
+        db.refuelings.clear(),
+        db.expenses.clear()
+      ]);
 
-      // Thêm dữ liệu mới
-      await db.vehicles.bulkAdd(data.vehicles);
-      await db.refuelings.bulkAdd(data.refuelings);
-      await db.expenses.bulkAdd(data.expenses);
+      // Thêm song song dữ liệu mới (Tối ưu hóa hiệu năng)
+      await Promise.all([
+        db.vehicles.bulkAdd(data.vehicles),
+        db.refuelings.bulkAdd(data.refuelings),
+        db.expenses.bulkAdd(data.expenses)
+      ]);
     });
   };
 
@@ -121,23 +127,41 @@ export default function SyncBackup() {
 
   // Import dữ liệu từ file JSON cục bộ
   const handleLocalImport = (e) => {
-    const fileReader = new FileReader();
     const file = e.target.files[0];
     if (!file) return;
 
-    if (!confirm('Hành động này sẽ Ghi đè toàn bộ dữ liệu hiện có bằng dữ liệu trong file. Tiếp tục?')) {
+    // 1. Bộ lọc định dạng file JSON
+    const isJson = file.type === 'application/json' || file.name.endsWith('.json');
+    if (!isJson) {
+      showStatus('Chỉ chấp nhận tệp tin định dạng JSON (.json)', 'error');
+      e.target.value = '';
       return;
     }
 
+    if (!confirm('Hành động này sẽ Ghi đè toàn bộ dữ liệu hiện có bằng dữ liệu trong file. Tiếp tục?')) {
+      e.target.value = '';
+      return;
+    }
+
+    const fileReader = new FileReader();
     fileReader.onload = async (event) => {
       try {
         const parsedData = JSON.parse(event.target.result);
         await importToDB(parsedData);
         showStatus('Đã khôi phục dữ liệu từ file JSON thành công!', 'success');
       } catch (err) {
-        showStatus('Lọc file thất bại: Định dạng JSON sai hoặc lỗi.', 'error');
+        showStatus('Khôi phục thất bại: ' + err.message, 'error');
+      } finally {
+        // 2. Giải phóng bộ nhớ input file
+        e.target.value = '';
       }
     };
+
+    fileReader.onerror = () => {
+      showStatus('Không thể đọc tệp tin này.', 'error');
+      e.target.value = '';
+    };
+
     fileReader.readAsText(file);
   };
 

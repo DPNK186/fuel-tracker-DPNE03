@@ -36,6 +36,11 @@ export default function App() {
   const [newVehiclePlate, setNewVehiclePlate] = useState('');
   const [newVehicleTankCapacity, setNewVehicleTankCapacity] = useState('');
 
+  // Chuỗi ID các xe để tối ưu hóa dependencies cho useEffect (chống render lặp vô hạn)
+  const vehicleIdsString = useMemo(() => {
+    return vehicles ? vehicles.map(v => v.id).join(',') : '';
+  }, [vehicles]);
+
   // Chế độ chỉnh sửa thông tin xe
   const [editingVehicleId, setEditingVehicleId] = useState(null);
 
@@ -75,7 +80,8 @@ export default function App() {
         localStorage.setItem('active_vehicle_id', defaultId);
       }
     }
-  }, [vehicles, currentVehicleId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vehicleIdsString, currentVehicleId]);
 
   // Kiểm tra trạng thái Standalone & Snooze 7 ngày của PWA Banner
   useEffect(() => {
@@ -161,29 +167,42 @@ export default function App() {
       tankCapacity: newVehicleTankCapacity ? parseFloat(newVehicleTankCapacity) : null
     };
 
-    if (editingVehicleId) {
-      // Chế độ Chỉnh sửa
-      await db.vehicles.update(editingVehicleId, data);
-      setEditingVehicleId(null);
-    } else {
-      // Chế độ Thêm mới (Kiểm tra và tự động dọn dẹp xe mẫu)
-      const sampleVehicle = vehicles?.find(v => v.plateNumber === '29A-123.45');
-      if (sampleVehicle) {
-        const sampleId = sampleVehicle.id;
-        await db.vehicles.delete(sampleId);
-        await db.refuelings.where('vehicleId').equals(sampleId).delete();
-        await db.expenses.where('vehicleId').equals(sampleId).delete();
+    try {
+      if (editingVehicleId) {
+        // Chế độ Chỉnh sửa
+        await db.vehicles.update(editingVehicleId, data);
+        setEditingVehicleId(null);
+      } else {
+        // Chế độ Thêm mới (Bọc dọn dẹp và thêm mới trong một Transaction nguyên tử)
+        let newId;
+        await db.transaction('rw', db.vehicles, db.refuelings, db.expenses, async () => {
+          const sampleVehicle = await db.vehicles.where('plateNumber').equals('29A-123.45').first();
+          if (sampleVehicle) {
+            const sampleId = sampleVehicle.id;
+            // Xóa song song dữ liệu mẫu liên kết
+            await Promise.all([
+              db.vehicles.delete(sampleId),
+              db.refuelings.where('vehicleId').equals(sampleId).delete(),
+              db.expenses.where('vehicleId').equals(sampleId).delete()
+            ]);
+          }
+          newId = await db.vehicles.add(data);
+        });
+
+        if (newId) {
+          setCurrentVehicleId(newId.toString());
+          localStorage.setItem('active_vehicle_id', newId.toString());
+        }
       }
 
-      const newId = await db.vehicles.add(data);
-      setCurrentVehicleId(newId.toString());
-      localStorage.setItem('active_vehicle_id', newId.toString());
+      setNewVehicleName('');
+      setNewVehiclePlate('');
+      setNewVehicleTankCapacity('');
+      setShowVehicleModal(false);
+    } catch (err) {
+      console.error('Lỗi khi thao tác phương tiện:', err);
+      alert('Thao tác phương tiện thất bại: ' + err.message);
     }
-
-    setNewVehicleName('');
-    setNewVehiclePlate('');
-    setNewVehicleTankCapacity('');
-    setShowVehicleModal(false);
   };
 
   // Xác định thông tin xe hiện tại đang chọn
