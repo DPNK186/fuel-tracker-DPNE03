@@ -105,8 +105,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col w-full max-w-md sm:max-w-xl md:max-w-2xl mx-auto relative shadow-2xl border-x border-slate-900 transition-all duration-300">
-      {/* Top Header */}
-      <header className="sticky top-0 z-50 glass-card px-5 py-3.5 flex items-center justify-between border-b border-slate-900 rounded-b-2xl">
+      {/* Top Header - Đổi sang bg-slate-900 solid đục hoàn toàn để tránh đè chữ khi cuộn */}
+      <header className="sticky top-0 z-50 bg-slate-900 px-5 py-3.5 flex items-center justify-between border-b border-slate-800 rounded-b-2xl transition-all duration-300">
         <div className="flex items-center gap-2.5">
           <img 
             src="/fuel-tracker-DPNE03/Icon1.png" 
@@ -181,8 +181,8 @@ export default function App() {
         {activeTab === 'sync' && <SyncBackup />}
       </main>
 
-      {/* Navigation Tabbar */}
-      <nav className="fixed bottom-0 left-0 right-0 max-w-md sm:max-w-xl md:max-w-2xl mx-auto glass-card border-t border-slate-900 rounded-t-3xl tab-bar-safe z-50 transition-all duration-300">
+      {/* Navigation Tabbar - Đổi sang bg-slate-900 solid đục hoàn toàn để tránh đè chữ khi cuộn */}
+      <nav className="fixed bottom-0 left-0 right-0 max-w-md sm:max-w-xl md:max-w-2xl mx-auto bg-slate-900 border-t border-slate-800 rounded-t-3xl tab-bar-safe z-50 transition-all duration-300">
         <div className="grid grid-cols-4 py-2">
           {/* Dashboard Tab */}
           <button
