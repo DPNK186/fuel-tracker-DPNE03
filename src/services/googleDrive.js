@@ -1,4 +1,4 @@
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '425147321997-ojjgks40prnbj1npse9c7o4jqjms4gp9.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 
 // Hàm trợ giúp đọc thông tin lỗi an toàn

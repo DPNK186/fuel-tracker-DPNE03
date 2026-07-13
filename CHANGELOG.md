@@ -2,6 +2,11 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.1.2] - 2026-07-13
+
+### Fixed (Sửa lỗi)
+- Cấu hình giá trị Client ID mặc định làm fallback cho biến `CLIENT_ID` trong `googleDriveService`. Việc này giải quyết lỗi trống biến cấu hình khi ứng dụng được tự động build và deploy từ GitHub Actions (môi trường không lưu trữ file `.env` vì lý do bảo mật).
+
 ## 🚀 [1.1.1] - 2026-07-13
 
 ### Add (Thêm mới)
