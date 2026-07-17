@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { googleDriveService, importToDB } from '../services/googleDrive';
 import { db } from '../db/db';
-import { Cloud, CloudLightning, RefreshCw, LogIn, LogOut, Download, Upload, ShieldAlert, CheckCircle } from 'lucide-react';
+import { Cloud, CloudLightning, RefreshCw, LogIn, LogOut, Download, Upload, ShieldAlert, CheckCircle, Info } from 'lucide-react';
 
 export default function SyncBackup() {
   const [isConnected, setIsConnected] = useState(false);
@@ -332,6 +332,28 @@ export default function SyncBackup() {
               <span className="text-xs text-slate-500">Nhấp để chọn file sao lưu từ máy của bạn</span>
             </label>
           </div>
+        </div>
+      </div>
+
+      {/* App Version Info Card */}
+      <div className="bg-slate-900/40 border border-slate-800/80 rounded-3xl p-5 flex flex-col items-center justify-center text-center animate-fade-in space-y-2.5" style={{ animationDelay: '0.2s' }}>
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
+          <Info className="w-4 h-4 text-brand-400" />
+          <span>Thông tin ứng dụng</span>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          <div>
+            <span className="text-slate-500">Phiên bản: </span>
+            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.2.2</span>
+          </div>
+          <div className="h-3 w-[1px] bg-slate-800"></div>
+          <div>
+            <span className="text-slate-500">Cập nhật: </span>
+            <span className="text-slate-300 font-medium">17/07/2026 22:15</span>
+          </div>
+        </div>
+        <div className="text-[10px] text-slate-500 font-semibold pt-2 border-t border-slate-800/60 w-full mt-1">
+          Build by ĐPNE03
         </div>
       </div>
     </div>
