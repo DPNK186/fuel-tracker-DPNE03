@@ -65,77 +65,131 @@ export const googleDriveService = {
   // Timer lưu trữ retry ngầm
   retryTimer: null,
 
-  // Lấy Access Token từ URL hash hoặc localStorage
-  getAccessToken() {
-    // 1. Kiểm tra trong URL hash (sau khi redirect từ Google OAuth)
-    const hash = window.location.hash;
-    if (hash) {
-      const params = new URLSearchParams(hash.substring(1));
-      const accessToken = params.get('access_token');
-      const expiresIn = params.get('expires_in'); // thời gian sống (giây)
+  // Google GIS Token Client
+  tokenClient: null,
 
-      if (accessToken) {
-        const expiresAt = new Date().getTime() + parseInt(expiresIn) * 1000;
-        localStorage.setItem('google_access_token', accessToken);
-        localStorage.setItem('google_token_expires_at', expiresAt.toString());
-        
-        // Xóa hash trên URL để nhìn sạch sẽ hơn
-        window.history.replaceState(null, null, window.location.pathname + window.location.search);
-        return accessToken;
+  // Các Promise resolve khi nhận callback từ GIS
+  pendingResolvers: [],
+
+  // Khởi tạo Google Token Client
+  initTokenClient() {
+    if (this.tokenClient) return this.tokenClient;
+    if (!window.google) return null;
+
+    this.tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: (tokenResponse) => {
+        const isError = !!tokenResponse.error;
+        if (!isError) {
+          const accessToken = tokenResponse.access_token;
+          const expiresIn = tokenResponse.expires_in; // thời gian sống (giây)
+          const expiresAt = new Date().getTime() + parseInt(expiresIn) * 1000;
+
+          localStorage.setItem('google_access_token', accessToken);
+          localStorage.setItem('google_token_expires_at', expiresAt.toString());
+          localStorage.setItem('google_logged_in', 'true');
+
+          window.dispatchEvent(new CustomEvent('google-drive-login-success'));
+        } else {
+          console.error('Google OAuth Callback Error:', tokenResponse.error);
+          if (tokenResponse.error === 'interaction_required' || tokenResponse.error === 'consent_required') {
+            this.logout();
+          }
+        }
+
+        // Gọi tất cả resolver đang chờ nhận kết quả
+        const resolvers = [...this.pendingResolvers];
+        this.pendingResolvers = [];
+        resolvers.forEach(resolve => resolve(!isError));
       }
-    }
+    });
 
-    // 2. Kiểm tra trong localStorage xem token cũ còn hạn không
+    return this.tokenClient;
+  },
+
+  // Lấy Access Token từ localStorage (chỉ trả về nếu còn hạn)
+  getAccessToken() {
     const token = localStorage.getItem('google_access_token');
     const expiresAt = localStorage.getItem('google_token_expires_at');
 
     if (token && expiresAt) {
       if (new Date().getTime() < parseInt(expiresAt)) {
         return token;
-      } else {
-        // Hết hạn thì xóa đi
-        this.logout();
       }
     }
-
     return null;
   },
 
-  // Chuyển hướng sang Google OAuth để đăng nhập
+  // Đảm bảo lấy được Access Token hợp lệ, tự động refresh ngầm nếu đã hết hạn
+  async ensureValidToken() {
+    const token = this.getAccessToken();
+    if (token) return token;
+
+    // Nếu không có token hợp lệ nhưng cờ logged_in vẫn là true, thử làm mới ngầm
+    if (localStorage.getItem('google_logged_in') === 'true') {
+      const success = await this.refreshTokenSilently();
+      if (success) {
+        return localStorage.getItem('google_access_token');
+      }
+    }
+    return null;
+  },
+
+  // Gọi đăng nhập Google hiển thị Popup
   login() {
     if (!CLIENT_ID) {
       alert('Vui lòng cấu hình VITE_GOOGLE_CLIENT_ID trong file .env');
       return;
     }
 
-    const redirectUri = window.location.origin + window.location.pathname;
-    const authUrl = 
-      `https://accounts.google.com/o/oauth2/v2/auth` +
-      `?client_id=${CLIENT_ID}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&response_type=token` +
-      `&scope=${encodeURIComponent(SCOPES)}`;
-      
-    window.location.href = authUrl;
+    if (!window.google) {
+      alert('Thư viện đăng nhập Google đang tải, vui lòng thử lại sau vài giây.');
+      return;
+    }
+
+    const client = this.initTokenClient();
+    if (client) {
+      client.requestAccessToken();
+    }
+  },
+
+  // Làm mới token ngầm không hiện popup
+  refreshTokenSilently() {
+    return new Promise((resolve) => {
+      if (!window.google) {
+        resolve(false);
+        return;
+      }
+
+      const client = this.initTokenClient();
+      if (client) {
+        this.pendingResolvers.push(resolve);
+        client.requestAccessToken({ prompt: '' });
+      } else {
+        resolve(false);
+      }
+    });
   },
 
   logout() {
     localStorage.removeItem('google_access_token');
     localStorage.removeItem('google_token_expires_at');
+    localStorage.removeItem('google_logged_in');
     localStorage.removeItem('google_drive_last_synced');
     localStorage.removeItem('google_drive_last_synced_cloud_timestamp');
     localStorage.removeItem('google_drive_unsynced_changes');
     window.dispatchEvent(new CustomEvent('google-drive-logout'));
   },
 
-  // Kiểm tra xem đã kết nối tài khoản chưa
+  // Kiểm tra xem đã kết nối tài khoản chưa (dựa trên cờ logged_in)
   isConnected() {
-    return !!this.getAccessToken();
+    return localStorage.getItem('google_logged_in') === 'true';
   },
 
   // Đồng bộ: Sao lưu dữ liệu lên Google Drive AppData
   async backup(data) {
-    const token = this.getAccessToken();
+    const token = await this.ensureValidToken();
     if (!token) throw new Error('Chưa đăng nhập Google');
 
     const fileName = 'fuel_tracker_backup.json';
@@ -236,7 +290,7 @@ export const googleDriveService = {
 
   // Đồng bộ: Phục hồi dữ liệu từ Google Drive
   async restore() {
-    const token = this.getAccessToken();
+    const token = await this.ensureValidToken();
     if (!token) throw new Error('Chưa đăng nhập Google');
 
     const fileName = 'fuel_tracker_backup.json';
@@ -288,7 +342,7 @@ export const googleDriveService = {
 
     try {
       const fileName = 'fuel_tracker_backup.json';
-      const token = this.getAccessToken();
+      const token = await this.ensureValidToken();
       if (!token) throw new Error('Chưa đăng nhập Google');
 
       // 1. Tìm kiếm file backup hiện tại trên Drive để lấy timestamp

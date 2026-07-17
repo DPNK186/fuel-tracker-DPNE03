@@ -11,9 +11,19 @@ export default function SyncBackup() {
   const [lastSynced, setLastSynced] = useState(localStorage.getItem('google_drive_last_synced') || null);
 
   useEffect(() => {
-    // Kích hoạt việc lấy token từ URL hash nếu có
-    googleDriveService.getAccessToken();
-    setIsConnected(googleDriveService.isConnected());
+    // Kích hoạt việc lấy/làm mới token nếu đã từng đăng nhập
+    if (googleDriveService.isConnected()) {
+      setIsConnected(true);
+      googleDriveService.refreshTokenSilently().then(success => {
+        setIsConnected(success);
+      });
+    } else {
+      setIsConnected(false);
+    }
+
+    const handleLoginSuccessEvent = () => {
+      setIsConnected(true);
+    };
 
     const handleLogoutEvent = () => {
       setIsConnected(false);
@@ -24,9 +34,11 @@ export default function SyncBackup() {
       setLastSynced(localStorage.getItem('google_drive_last_synced') || null);
     };
 
+    window.addEventListener('google-drive-login-success', handleLoginSuccessEvent);
     window.addEventListener('google-drive-logout', handleLogoutEvent);
     window.addEventListener('google-drive-sync-success', handleSyncSuccessEvent);
     return () => {
+      window.removeEventListener('google-drive-login-success', handleLoginSuccessEvent);
       window.removeEventListener('google-drive-logout', handleLogoutEvent);
       window.removeEventListener('google-drive-sync-success', handleSyncSuccessEvent);
     };

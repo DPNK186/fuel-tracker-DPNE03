@@ -2,6 +2,16 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.2.1] - 2026-07-17
+
+### Added (Thêm mới)
+- Tích hợp thư viện **Google Identity Services (GIS) SDK** để nâng cấp luồng đăng nhập Google.
+- Hỗ trợ popup đăng nhập Google an toàn trực tiếp trên ứng dụng, không còn chuyển hướng toàn bộ trang web.
+- Thêm tính năng **Tự động làm mới token ngầm (Silent Token Refresh)** trước mỗi lần đồng bộ hoặc khi ứng dụng khởi chạy nếu người dùng đã từng kết nối thành công trước đó (thông qua cờ `google_logged_in`).
+
+### Changed (Thay đổi)
+- Cập nhật hàm `isConnected()`, `getAccessToken()`, `backup()`, `restore()`, và `autoBackup()` để phối hợp đồng bộ với cơ chế tự động gia hạn token.
+
 ## 🚀 [1.2.0] - 2026-07-17
 
 ### Add (Thêm mới)

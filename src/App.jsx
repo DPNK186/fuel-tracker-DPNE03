@@ -67,8 +67,10 @@ export default function App() {
 
   // Quản lý trạng thái Online/Offline & Đồng bộ Google Drive
   useEffect(() => {
-    // Trích xuất token đăng nhập từ URL hash nếu có
-    googleDriveService.getAccessToken();
+    // Thực hiện tự động làm mới token ngầm khi khởi chạy nếu đã kết nối trước đó
+    if (googleDriveService.isConnected()) {
+      googleDriveService.refreshTokenSilently();
+    }
 
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -133,6 +135,7 @@ export default function App() {
     handleOnlineSync();
 
     window.addEventListener('online', handleOnlineSync);
+    window.addEventListener('google-drive-login-success', handleOnlineSync);
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -142,6 +145,7 @@ export default function App() {
       window.removeEventListener('google-drive-sync-error', handleSyncError);
       window.removeEventListener('google-drive-sync-conflict', handleSyncConflict);
       window.removeEventListener('online', handleOnlineSync);
+      window.removeEventListener('google-drive-login-success', handleOnlineSync);
       clearTimeout(successTimeout);
     };
   }, []);
