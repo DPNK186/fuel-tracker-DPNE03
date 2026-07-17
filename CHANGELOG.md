@@ -2,6 +2,11 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.2.2] - 2026-07-17
+
+### Fixed (Sửa lỗi)
+- Sửa lỗi mất session đăng nhập Google khi chuyển đổi qua lại giữa các tab (hoặc khi component mount). Chỉ kích hoạt làm mới token ngầm `refreshTokenSilently` khi token cũ thực sự hết hạn hoặc không tồn tại.
+
 ## 🚀 [1.2.1] - 2026-07-17
 
 ### Added (Thêm mới)

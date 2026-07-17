@@ -14,9 +14,12 @@ export default function SyncBackup() {
     // Kích hoạt việc lấy/làm mới token nếu đã từng đăng nhập
     if (googleDriveService.isConnected()) {
       setIsConnected(true);
-      googleDriveService.refreshTokenSilently().then(success => {
-        setIsConnected(success);
-      });
+      // Chỉ làm mới ngầm nếu Access Token hiện tại đã thực sự hết hạn/không hợp lệ
+      if (!googleDriveService.getAccessToken()) {
+        googleDriveService.refreshTokenSilently().then(success => {
+          setIsConnected(success);
+        });
+      }
     } else {
       setIsConnected(false);
     }
