@@ -5,7 +5,7 @@ Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận
 ## 🚀 [1.2.0] - 2026-07-17
 
 ### Add (Thêm mới)
-- Tích hợp **Tính năng Tự động đồng bộ Google Drive ngầm (Background Auto Sync)**: Tự động chạy sao lưu dữ liệu lên đám mây ở chế độ ngầm sau mỗi thao tác thêm, sửa hoặc xóa dữ liệu (xe máy/ô tô, đổ xăng, chi phí khác).
+- Tích hợp **Tính năng Tự động đồng bộ Google Drive ngầm (Background Auto Sync)**: Tự động chạy sao lưu dữ liệu lên đám mây ở chế độ ngầm sau mỗi thao tác thêm, sửa hoặc xóa dữ liệu (xe máy/ô tô, đổ xăng, chi phí khác). Tự động trích xuất token đăng nhập tức thì ở cấp cao nhất (`App.jsx`) và tự động kiểm tra/đồng bộ ngay sau khi người dùng đăng nhập thành công.
 - Thêm cơ chế **Tự động thử lại (Retry) thông minh**: Khi mất kết nối hoặc lỗi API, hệ thống sẽ tự động thử lại sau mỗi 10 giây hoặc ngay khi có kết nối mạng trở lại (sự kiện `online`) hoặc khi mở lại ứng dụng.
 - Tích hợp cờ trạng thái chưa đồng bộ `google_drive_unsynced_changes` giúp lưu giữ các thay đổi cục bộ và tự động đồng bộ khi online trở lại.
 - Thiết kế **Chỉ báo đồng bộ động (Dynamic Sync Badge)** sinh động ngoài Header:
@@ -14,7 +14,7 @@ Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận
   - Khi sync lỗi, hiển thị biểu tượng đám mây kèm dấu `X` đỏ ("Lỗi Sync").
 - Thiết lập cơ chế **Giải quyết Xung đột dữ liệu (Conflict Resolution)**:
   - So sánh `timestamp` của bản sao lưu đám mây với thiết bị local trước khi đồng bộ để phát hiện xung đột nếu người dùng dùng nhiều thiết bị.
-  - Tự động tải bản mới từ đám mây xuống local (Auto-Restore) nếu local không có sửa đổi nào mới.
+  - Tự động tải bản mới từ đám mây xuống local (Auto-Restore) nếu local không có sửa đổi nào mới (thiết bị mới đăng nhập).
   - Hiển thị Modal Popup trực quan để người dùng xác nhận lựa chọn giữ bản Đám mây (ghi đè local) hoặc giữ bản Thiết bị (ghi đè đám mây) khi xảy ra xung đột thực sự.
 
 ### Changed (Thay đổi)

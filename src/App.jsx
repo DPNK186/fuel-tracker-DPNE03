@@ -67,6 +67,9 @@ export default function App() {
 
   // Quản lý trạng thái Online/Offline & Đồng bộ Google Drive
   useEffect(() => {
+    // Trích xuất token đăng nhập từ URL hash nếu có
+    googleDriveService.getAccessToken();
+
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
@@ -114,10 +117,16 @@ export default function App() {
     window.addEventListener('google-drive-sync-error', handleSyncError);
     window.addEventListener('google-drive-sync-conflict', handleSyncConflict);
 
-    // Tự động đồng bộ khi online lại hoặc khi vừa mở app mà có dữ liệu chưa sync
+    // Tự động đồng bộ khi online lại, khi mở app có dữ liệu chưa sync hoặc vừa đăng nhập trên thiết bị mới
     const handleOnlineSync = () => {
-      if (navigator.onLine && localStorage.getItem('google_drive_unsynced_changes') === 'true') {
-        googleDriveService.autoBackup();
+      if (navigator.onLine && googleDriveService.isConnected()) {
+        const lastSynced = localStorage.getItem('google_drive_last_synced');
+        const hasUnsyncedChanges = localStorage.getItem('google_drive_unsynced_changes') === 'true';
+
+        // Nếu chưa từng đồng bộ (thiết bị mới vừa đăng nhập) hoặc có thay đổi chưa đồng bộ
+        if (!lastSynced || hasUnsyncedChanges) {
+          googleDriveService.autoBackup();
+        }
       }
     };
 

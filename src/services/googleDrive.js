@@ -43,6 +43,24 @@ export async function importToDB(data) {
   });
 }
 
+// Kiểm tra xem cơ sở dữ liệu IndexedDB hiện tại đang trống hoặc chỉ chứa dữ liệu mẫu
+export async function isLocalDBEmptyOrSample() {
+  try {
+    const vehicles = await db.vehicles.toArray();
+    if (vehicles.length === 0) return true;
+    if (vehicles.length === 1) {
+      const v = vehicles[0];
+      // Xe Honda Vision có biển số '29A-123.45' là xe mẫu mặc định được populate
+      if (v.plateNumber === '29A-123.45') {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export const googleDriveService = {
   // Timer lưu trữ retry ngầm
   retryTimer: null,
@@ -305,6 +323,30 @@ export const googleDriveService = {
 
       const localLastSyncedCloudTimestamp = localStorage.getItem('google_drive_last_synced_cloud_timestamp');
       const hasUnsyncedChanges = localStorage.getItem('google_drive_unsynced_changes') === 'true';
+
+      // Xử lý trường hợp đăng nhập thiết bị mới (chưa từng đồng bộ thành công trước đó trên thiết bị này)
+      if (cloudTimestamp && !localLastSyncedCloudTimestamp) {
+        const isEmptyOrSample = await isLocalDBEmptyOrSample();
+        if (isEmptyOrSample) {
+          // Tự động khôi phục từ Cloud về Local
+          await importToDB(cloudData);
+          localStorage.setItem('google_drive_last_synced', new Date().toISOString());
+          localStorage.setItem('google_drive_last_synced_cloud_timestamp', cloudTimestamp);
+          localStorage.removeItem('google_drive_unsynced_changes');
+          window.dispatchEvent(new CustomEvent('google-drive-sync-success', { detail: cloudTimestamp }));
+          return;
+        } else if (!forceOverwrite) {
+          // Local đã có dữ liệu thực của người dùng -> phát sinh xung đột để chọn ghi đè
+          window.dispatchEvent(new CustomEvent('google-drive-sync-conflict', {
+            detail: {
+              localTime: null,
+              cloudTime: cloudTimestamp,
+              cloudData: cloudData
+            }
+          }));
+          return;
+        }
+      }
 
       // Phát hiện xung đột dữ liệu
       if (cloudTimestamp && localLastSyncedCloudTimestamp && cloudTimestamp !== localLastSyncedCloudTimestamp) {
