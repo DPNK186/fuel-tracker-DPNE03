@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { googleDriveService } from '../services/googleDrive';
+import { googleDriveService, importToDB } from '../services/googleDrive';
 import { db } from '../db/db';
 import { Cloud, CloudLightning, RefreshCw, LogIn, LogOut, Download, Upload, ShieldAlert, CheckCircle } from 'lucide-react';
 
@@ -8,6 +8,7 @@ export default function SyncBackup() {
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('info'); // info, success, error
+  const [lastSynced, setLastSynced] = useState(localStorage.getItem('google_drive_last_synced') || null);
 
   useEffect(() => {
     // Kích hoạt việc lấy token từ URL hash nếu có
@@ -16,13 +17,32 @@ export default function SyncBackup() {
 
     const handleLogoutEvent = () => {
       setIsConnected(false);
+      setLastSynced(null);
+    };
+
+    const handleSyncSuccessEvent = () => {
+      setLastSynced(localStorage.getItem('google_drive_last_synced') || null);
     };
 
     window.addEventListener('google-drive-logout', handleLogoutEvent);
+    window.addEventListener('google-drive-sync-success', handleSyncSuccessEvent);
     return () => {
       window.removeEventListener('google-drive-logout', handleLogoutEvent);
+      window.removeEventListener('google-drive-sync-success', handleSyncSuccessEvent);
     };
   }, []);
+
+  const formatDateTime = (isoString) => {
+    if (!isoString) return 'Chưa từng đồng bộ';
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return 'Chưa từng đồng bộ';
+      const pad = (n) => n.toString().padStart(2, '0');
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    } catch {
+      return 'Chưa từng đồng bộ';
+    }
+  };
 
   const handleLogin = () => {
     googleDriveService.login();
@@ -56,41 +76,22 @@ export default function SyncBackup() {
     };
   };
 
-  // Thực hiện ghi dữ liệu đã restore vào Dexie
-  const importToDB = async (data) => {
-    // 1. Xác thực cấu trúc dữ liệu nghiêm ngặt (Schema Validation) trước khi xóa dữ liệu cũ
-    if (!data || data.version !== 1 || !Array.isArray(data.vehicles) || !Array.isArray(data.refuelings) || !Array.isArray(data.expenses)) {
-      throw new Error('Định dạng dữ liệu không hợp lệ hoặc thiếu thông tin phiên bản.');
-    }
-
-    // 2. Thực hiện xóa và thêm mới trong một Transaction để đảm bảo tính nguyên tử
-    await db.transaction('rw', db.vehicles, db.refuelings, db.expenses, async () => {
-      // Xóa song song dữ liệu cũ (Tối ưu hóa hiệu năng)
-      await Promise.all([
-        db.vehicles.clear(),
-        db.refuelings.clear(),
-        db.expenses.clear()
-      ]);
-
-      // Thêm song song dữ liệu mới (Tối ưu hóa hiệu năng)
-      await Promise.all([
-        db.vehicles.bulkAdd(data.vehicles),
-        db.refuelings.bulkAdd(data.refuelings),
-        db.expenses.bulkAdd(data.expenses)
-      ]);
-    });
-  };
-
   // Sao lưu lên Google Drive
   const handleCloudBackup = async () => {
     setLoading(true);
     showStatus('Đang nén dữ liệu và tải lên...', 'info');
+    window.dispatchEvent(new CustomEvent('google-drive-sync-start'));
     try {
       const data = await getDBData();
       await googleDriveService.backup(data);
+      const syncTime = new Date().toISOString();
+      localStorage.setItem('google_drive_last_synced', syncTime);
+      setLastSynced(syncTime);
+      window.dispatchEvent(new CustomEvent('google-drive-sync-success', { detail: syncTime }));
       showStatus('Sao lưu lên Google Drive thành công!', 'success');
     } catch (err) {
       console.error(err);
+      window.dispatchEvent(new CustomEvent('google-drive-sync-error', { detail: err.message }));
       showStatus('Sao lưu thất bại: ' + err.message, 'error');
     } finally {
       setLoading(false);
@@ -158,6 +159,8 @@ export default function SyncBackup() {
         const parsedData = JSON.parse(event.target.result);
         await importToDB(parsedData);
         showStatus('Đã khôi phục dữ liệu từ file JSON thành công!', 'success');
+        // Tự động đồng bộ lên Drive ngầm sau khi import local
+        googleDriveService.autoBackup();
       } catch (err) {
         showStatus('Khôi phục thất bại: ' + err.message, 'error');
       } finally {
@@ -207,6 +210,9 @@ export default function SyncBackup() {
               <div>
                 <p className="font-semibold text-slate-200">Đã kết nối Google Drive</p>
                 <p className="text-xs text-slate-500 mt-1">Dữ liệu được lưu an toàn trong thư mục AppData riêng tư</p>
+                <p className="text-xs text-brand-400 mt-2 bg-brand-500/5 py-1 px-3 rounded-lg border border-brand-500/10 inline-block font-medium">
+                  Đồng bộ lần cuối: {formatDateTime(lastSynced)}
+                </p>
               </div>
               <button
                 onClick={handleLogout}

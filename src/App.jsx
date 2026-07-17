@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db/db';
 import Dashboard from './components/Dashboard';
@@ -6,6 +6,7 @@ import RefuelingForm from './components/RefuelingForm';
 import ExpenseForm from './components/ExpenseForm';
 import SyncBackup from './components/SyncBackup';
 import { useRegisterSW } from 'virtual:pwa-register/react'; // Import hook đăng ký SW chủ động
+import { googleDriveService, importToDB } from './services/googleDrive';
 import { 
   LayoutDashboard, 
   Fuel, 
@@ -16,7 +17,10 @@ import {
   Plus, 
   X, 
   Wifi, 
-  WifiOff 
+  WifiOff,
+  RefreshCw,
+  Check,
+  AlertCircle
 } from 'lucide-react';
 
 export default function App() {
@@ -27,6 +31,11 @@ export default function App() {
   // Điều phối mở rộng form
   const [expandRefuel, setExpandRefuel] = useState(false);
   const [expandExpense, setExpandExpense] = useState(false);
+
+  // Đồng bộ Google Drive
+  const [syncState, setSyncState] = useState('idle'); // 'idle' | 'syncing' | 'success' | 'error'
+  const [conflictData, setConflictData] = useState(null);
+  const syncStartTimeRef = useRef(0);
 
   // Xe
   const vehicles = useLiveQuery(() => db.vehicles.toArray());
@@ -56,7 +65,7 @@ export default function App() {
     updateServiceWorker,
   } = useRegisterSW();
 
-  // Quản lý trạng thái Online/Offline
+  // Quản lý trạng thái Online/Offline & Đồng bộ Google Drive
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -64,9 +73,67 @@ export default function App() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    let successTimeout;
+
+    const handleSyncStart = () => {
+      syncStartTimeRef.current = Date.now();
+      setSyncState('syncing');
+    };
+
+    const handleSyncSuccess = () => {
+      const elapsedTime = Date.now() - syncStartTimeRef.current;
+      const minDuration = 1000; // Tối thiểu 1 giây xoay
+      const delay = Math.max(0, minDuration - elapsedTime);
+
+      setTimeout(() => {
+        setSyncState('success');
+        
+        successTimeout = setTimeout(() => {
+          setSyncState('idle');
+        }, 3000);
+      }, delay);
+    };
+
+    const handleSyncError = () => {
+      const elapsedTime = Date.now() - syncStartTimeRef.current;
+      const minDuration = 1000;
+      const delay = Math.max(0, minDuration - elapsedTime);
+
+      setTimeout(() => {
+        setSyncState('error');
+      }, delay);
+    };
+
+    const handleSyncConflict = (e) => {
+      setConflictData(e.detail);
+      setSyncState('idle');
+    };
+
+    window.addEventListener('google-drive-sync-start', handleSyncStart);
+    window.addEventListener('google-drive-sync-success', handleSyncSuccess);
+    window.addEventListener('google-drive-sync-error', handleSyncError);
+    window.addEventListener('google-drive-sync-conflict', handleSyncConflict);
+
+    // Tự động đồng bộ khi online lại hoặc khi vừa mở app mà có dữ liệu chưa sync
+    const handleOnlineSync = () => {
+      if (navigator.onLine && localStorage.getItem('google_drive_unsynced_changes') === 'true') {
+        googleDriveService.autoBackup();
+      }
+    };
+
+    handleOnlineSync();
+
+    window.addEventListener('online', handleOnlineSync);
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('google-drive-sync-start', handleSyncStart);
+      window.removeEventListener('google-drive-sync-success', handleSyncSuccess);
+      window.removeEventListener('google-drive-sync-error', handleSyncError);
+      window.removeEventListener('google-drive-sync-conflict', handleSyncConflict);
+      window.removeEventListener('online', handleOnlineSync);
+      clearTimeout(successTimeout);
     };
   }, []);
 
@@ -199,6 +266,9 @@ export default function App() {
       setNewVehiclePlate('');
       setNewVehicleTankCapacity('');
       setShowVehicleModal(false);
+      
+      // Kích hoạt auto backup ngầm sau khi lưu thông tin xe
+      googleDriveService.autoBackup();
     } catch (err) {
       console.error('Lỗi khi thao tác phương tiện:', err);
       alert('Thao tác phương tiện thất bại: ' + err.message);
@@ -228,9 +298,26 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Online/Offline Status */}
+          {/* Online/Offline Status / Sync Status */}
           <div className="transition-all duration-300">
-            {isOnline ? (
+            {syncState === 'syncing' ? (
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 animate-pulse">
+                <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                Syncing...
+              </span>
+            ) : syncState === 'success' ? (
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                <Cloud className="w-3.5 h-3.5 text-emerald-400 animate-fade-in" />
+                <Check className="w-2.5 h-2.5 text-emerald-400" />
+                Đã Sync
+              </span>
+            ) : syncState === 'error' ? (
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20" title="Đồng bộ lỗi, sẽ thử lại sau 10 giây">
+                <Cloud className="w-3.5 h-3.5 text-rose-500" />
+                <span className="text-[10px] font-extrabold text-rose-500">X</span>
+                Lỗi Sync
+              </span>
+            ) : isOnline ? (
               <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
                 <Wifi className="w-3 h-3" />
                 Online
@@ -483,6 +570,8 @@ export default function App() {
                               await db.vehicles.delete(v.id);
                               await db.refuelings.where('vehicleId').equals(v.id).delete();
                               await db.expenses.where('vehicleId').equals(v.id).delete();
+                              // Kích hoạt auto backup ngầm sau khi xóa xe
+                              googleDriveService.autoBackup();
                             }
                           }}
                           className="text-[10px] text-rose-500 hover:text-rose-400 font-bold px-2.5 py-1 hover:bg-rose-950/20 rounded-lg transition"
@@ -561,6 +650,71 @@ export default function App() {
                 )}
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Conflict Resolution Modal */}
+      {conflictData && (
+        <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="glass-card rounded-3xl w-full max-w-sm p-6 space-y-5 animate-fade-in border-amber-500/20">
+            <div className="flex items-center gap-2 text-amber-400">
+              <AlertCircle className="w-6 h-6 flex-shrink-0 animate-pulse" />
+              <h3 className="text-lg font-bold text-slate-100">Xung đột dữ liệu đám mây</h3>
+            </div>
+            
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Phát hiện bản sao lưu trên Google Drive không khớp với thiết bị hiện tại (do được cập nhật từ thiết bị khác). Hãy chọn phiên bản bạn muốn giữ lại:
+            </p>
+
+            <div className="space-y-3">
+              {/* Option Cloud */}
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await importToDB(conflictData.cloudData);
+                    const syncTime = new Date().toISOString();
+                    localStorage.setItem('google_drive_last_synced', syncTime);
+                    localStorage.setItem('google_drive_last_synced_cloud_timestamp', conflictData.cloudTime);
+                    localStorage.removeItem('google_drive_unsynced_changes');
+                    setConflictData(null);
+                    window.dispatchEvent(new CustomEvent('google-drive-sync-success', { detail: syncTime }));
+                    alert('Đã tải và khôi phục dữ liệu từ đám mây thành công!');
+                  } catch (err) {
+                    alert('Lỗi khôi phục: ' + err.message);
+                  }
+                }}
+                className="w-full bg-slate-900/80 border border-slate-800 hover:border-brand-500/30 p-3.5 rounded-2xl text-left transition duration-200 group active:scale-98"
+              >
+                <p className="text-xs font-bold text-slate-200 group-hover:text-brand-400 transition">1. Sử dụng dữ liệu trên Đám mây</p>
+                <p className="text-[10px] text-slate-500 mt-1">Cập nhật lúc: {new Date(conflictData.cloudTime).toLocaleString('vi-VN')}</p>
+                <p className="text-[9px] text-slate-500 mt-0.5 italic">(Ghi đè và xóa dữ liệu hiện tại trên thiết bị này)</p>
+              </button>
+
+              {/* Option Local */}
+              <button
+                type="button"
+                onClick={async () => {
+                  setConflictData(null);
+                  // Thực hiện ép ghi đè local lên đám mây
+                  googleDriveService.autoBackup(true);
+                }}
+                className="w-full bg-slate-900/80 border border-slate-800 hover:border-amber-500/30 p-3.5 rounded-2xl text-left transition duration-200 group active:scale-98"
+              >
+                <p className="text-xs font-bold text-slate-200 group-hover:text-amber-400 transition">2. Sử dụng dữ liệu trên Thiết bị</p>
+                <p className="text-[10px] text-slate-500 mt-1">Cập nhật lúc: {conflictData.localTime ? new Date(conflictData.localTime).toLocaleString('vi-VN') : 'Chưa xác định'}</p>
+                <p className="text-[9px] text-slate-500 mt-0.5 italic">(Ghi đè và thay thế bản sao lưu trên đám mây bằng thiết bị này)</p>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setConflictData(null)}
+              className="w-full bg-slate-800 hover:bg-slate-750 text-slate-400 py-2.5 rounded-xl text-xs font-semibold transition active:scale-95"
+            >
+              Để sau (Tạm dừng đồng bộ)
+            </button>
           </div>
         </div>
       )}

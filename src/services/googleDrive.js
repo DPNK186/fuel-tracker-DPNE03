@@ -1,3 +1,5 @@
+import { db } from '../db/db';
+
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '425147321997-ojjgks40prnbj1npse9c7o4jqjms4gp9.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 
@@ -8,15 +10,43 @@ async function parseErrorResponse(response) {
     try {
       const errData = JSON.parse(rawText);
       return errData.error?.message || response.statusText || 'Lỗi không xác định';
-    } catch (e) {
+    } catch {
       return rawText || response.statusText || 'Lỗi không xác định';
     }
-  } catch (e) {
+  } catch {
     return response.statusText || 'Lỗi không xác định';
   }
 }
 
+// Thực hiện ghi dữ liệu đã restore vào Dexie
+export async function importToDB(data) {
+  // 1. Xác thực cấu trúc dữ liệu nghiêm ngặt (Schema Validation) trước khi xóa dữ liệu cũ
+  if (!data || data.version !== 1 || !Array.isArray(data.vehicles) || !Array.isArray(data.refuelings) || !Array.isArray(data.expenses)) {
+    throw new Error('Định dạng dữ liệu không hợp lệ hoặc thiếu thông tin phiên bản.');
+  }
+
+  // 2. Thực hiện xóa và thêm mới trong một Transaction để đảm bảo tính nguyên tử
+  await db.transaction('rw', db.vehicles, db.refuelings, db.expenses, async () => {
+    // Xóa song song dữ liệu cũ (Tối ưu hóa hiệu năng)
+    await Promise.all([
+      db.vehicles.clear(),
+      db.refuelings.clear(),
+      db.expenses.clear()
+    ]);
+
+    // Thêm song song dữ liệu mới (Tối ưu hóa hiệu năng)
+    await Promise.all([
+      db.vehicles.bulkAdd(data.vehicles),
+      db.refuelings.bulkAdd(data.refuelings),
+      db.expenses.bulkAdd(data.expenses)
+    ]);
+  });
+}
+
 export const googleDriveService = {
+  // Timer lưu trữ retry ngầm
+  retryTimer: null,
+
   // Lấy Access Token từ URL hash hoặc localStorage
   getAccessToken() {
     // 1. Kiểm tra trong URL hash (sau khi redirect từ Google OAuth)
@@ -74,6 +104,9 @@ export const googleDriveService = {
   logout() {
     localStorage.removeItem('google_access_token');
     localStorage.removeItem('google_token_expires_at');
+    localStorage.removeItem('google_drive_last_synced');
+    localStorage.removeItem('google_drive_last_synced_cloud_timestamp');
+    localStorage.removeItem('google_drive_unsynced_changes');
     window.dispatchEvent(new CustomEvent('google-drive-logout'));
   },
 
@@ -139,7 +172,14 @@ export const googleDriveService = {
         const errMsg = await parseErrorResponse(response);
         throw new Error(`Cập nhật file sao lưu thất bại: ${errMsg}`);
       }
-      return await response.json();
+      
+      const result = await response.json();
+      localStorage.setItem('google_drive_last_synced', new Date().toISOString());
+      if (data && data.timestamp) {
+        localStorage.setItem('google_drive_last_synced_cloud_timestamp', data.timestamp);
+      }
+      localStorage.removeItem('google_drive_unsynced_changes');
+      return result;
     } else {
       // Multipart upload cho file mới
       const boundary = 'foo_bar_boundary';
@@ -165,7 +205,14 @@ export const googleDriveService = {
         const errMsg = await parseErrorResponse(response);
         throw new Error(`Tạo file sao lưu mới thất bại: ${errMsg}`);
       }
-      return await response.json();
+      
+      const result = await response.json();
+      localStorage.setItem('google_drive_last_synced', new Date().toISOString());
+      if (data && data.timestamp) {
+        localStorage.setItem('google_drive_last_synced_cloud_timestamp', data.timestamp);
+      }
+      localStorage.removeItem('google_drive_unsynced_changes');
+      return result;
     }
   },
 
@@ -207,5 +254,105 @@ export const googleDriveService = {
     }
     
     return await downloadResponse.json();
+  },
+
+  // Đồng bộ chạy ngầm và kiểm tra xung đột phiên bản
+  async autoBackup(forceOverwrite = false) {
+    if (!this.isConnected()) return;
+
+    if (this.retryTimer) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
+
+    // Báo hiệu bắt đầu đồng bộ
+    window.dispatchEvent(new CustomEvent('google-drive-sync-start'));
+
+    try {
+      const fileName = 'fuel_tracker_backup.json';
+      const token = this.getAccessToken();
+      if (!token) throw new Error('Chưa đăng nhập Google');
+
+      // 1. Tìm kiếm file backup hiện tại trên Drive để lấy timestamp
+      const query = `name='${fileName}' and 'appDataFolder' in parents`;
+      const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&spaces=appDataFolder`;
+      const searchResponse = await fetch(searchUrl, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      let cloudData = null;
+      let cloudTimestamp = null;
+      let existingFile = null;
+
+      if (searchResponse.ok) {
+        const searchResult = await searchResponse.json();
+        existingFile = searchResult.files && searchResult.files[0];
+        if (existingFile) {
+          const downloadUrl = `https://www.googleapis.com/drive/v3/files/${existingFile.id}?alt=media`;
+          const downloadResponse = await fetch(downloadUrl, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (downloadResponse.ok) {
+            try {
+              cloudData = await downloadResponse.json();
+              cloudTimestamp = cloudData?.timestamp || null;
+            } catch (e) {
+              console.error('Không thể đọc dữ liệu JSON trên Drive:', e);
+            }
+          }
+        }
+      }
+
+      const localLastSyncedCloudTimestamp = localStorage.getItem('google_drive_last_synced_cloud_timestamp');
+      const hasUnsyncedChanges = localStorage.getItem('google_drive_unsynced_changes') === 'true';
+
+      // Phát hiện xung đột dữ liệu
+      if (cloudTimestamp && localLastSyncedCloudTimestamp && cloudTimestamp !== localLastSyncedCloudTimestamp) {
+        if (hasUnsyncedChanges && !forceOverwrite) {
+          // Xung đột thực tế: Cả thiết bị khác đã ghi đè lên Cloud và Local hiện tại cũng có thay đổi chưa sync
+          window.dispatchEvent(new CustomEvent('google-drive-sync-conflict', {
+            detail: {
+              localTime: localLastSyncedCloudTimestamp,
+              cloudTime: cloudTimestamp,
+              cloudData: cloudData
+            }
+          }));
+          return;
+        } else if (!hasUnsyncedChanges) {
+          // Local không có sửa đổi nào mới, tự động khôi phục dữ liệu từ Cloud
+          await importToDB(cloudData);
+          localStorage.setItem('google_drive_last_synced', new Date().toISOString());
+          localStorage.setItem('google_drive_last_synced_cloud_timestamp', cloudTimestamp);
+          localStorage.removeItem('google_drive_unsynced_changes');
+          window.dispatchEvent(new CustomEvent('google-drive-sync-success', { detail: cloudTimestamp }));
+          return;
+        }
+      }
+
+      // 2. Thu thập dữ liệu Local và đẩy lên
+      const vehicles = await db.vehicles.toArray();
+      const refuelings = await db.refuelings.toArray();
+      const expenses = await db.expenses.toArray();
+      const data = {
+        version: 1,
+        timestamp: new Date().toISOString(),
+        vehicles,
+        refuelings,
+        expenses
+      };
+
+      await this.backup(data);
+      window.dispatchEvent(new CustomEvent('google-drive-sync-success', { detail: data.timestamp }));
+    } catch (err) {
+      console.error('Auto backup error:', err);
+      localStorage.setItem('google_drive_unsynced_changes', 'true');
+      window.dispatchEvent(new CustomEvent('google-drive-sync-error', { detail: err.message }));
+
+      // Hẹn giờ thử lại sau 10 giây
+      this.retryTimer = setTimeout(() => {
+        this.autoBackup(forceOverwrite);
+      }, 10000);
+    }
   }
 };
+

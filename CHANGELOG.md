@@ -2,6 +2,25 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.2.0] - 2026-07-17
+
+### Add (Thêm mới)
+- Tích hợp **Tính năng Tự động đồng bộ Google Drive ngầm (Background Auto Sync)**: Tự động chạy sao lưu dữ liệu lên đám mây ở chế độ ngầm sau mỗi thao tác thêm, sửa hoặc xóa dữ liệu (xe máy/ô tô, đổ xăng, chi phí khác).
+- Thêm cơ chế **Tự động thử lại (Retry) thông minh**: Khi mất kết nối hoặc lỗi API, hệ thống sẽ tự động thử lại sau mỗi 10 giây hoặc ngay khi có kết nối mạng trở lại (sự kiện `online`) hoặc khi mở lại ứng dụng.
+- Tích hợp cờ trạng thái chưa đồng bộ `google_drive_unsynced_changes` giúp lưu giữ các thay đổi cục bộ và tự động đồng bộ khi online trở lại.
+- Thiết kế **Chỉ báo đồng bộ động (Dynamic Sync Badge)** sinh động ngoài Header:
+  - Khi bắt đầu sync ngầm, biểu tượng Wifi online đổi thành biểu tượng 2 mũi tên xoay màu vàng (`RefreshCw` animate-spin) trong tối thiểu 1 giây.
+  - Khi sync thành công, hiển thị biểu tượng đám mây kèm dấu check xanh (`Check`) trong 3 giây để thông báo trực quan trước khi đưa về trạng thái bình thường.
+  - Khi sync lỗi, hiển thị biểu tượng đám mây kèm dấu `X` đỏ ("Lỗi Sync").
+- Thiết lập cơ chế **Giải quyết Xung đột dữ liệu (Conflict Resolution)**:
+  - So sánh `timestamp` của bản sao lưu đám mây với thiết bị local trước khi đồng bộ để phát hiện xung đột nếu người dùng dùng nhiều thiết bị.
+  - Tự động tải bản mới từ đám mây xuống local (Auto-Restore) nếu local không có sửa đổi nào mới.
+  - Hiển thị Modal Popup trực quan để người dùng xác nhận lựa chọn giữ bản Đám mây (ghi đè local) hoặc giữ bản Thiết bị (ghi đè đám mây) khi xảy ra xung đột thực sự.
+
+### Changed (Thay đổi)
+- Mở rộng tab Đồng bộ (`SyncBackup.jsx`): Bổ sung dòng hiển thị thời gian đồng bộ thành công gần nhất ("Đồng bộ lần cuối: DD/MM/YYYY HH:mm:ss") được cập nhật thời gian thực.
+- Sử dụng chung hàm helper `importToDB()` được đóng gói tại `src/services/googleDrive.js` giúp làm sạch mã nguồn và đồng nhất quy trình nhập dữ liệu Dexie.
+
 ## 🚀 [1.1.4] - 2026-07-13
 
 ### Fixed (Sửa lỗi)
