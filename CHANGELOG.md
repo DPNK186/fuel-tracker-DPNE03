@@ -2,6 +2,12 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.2.4] - 2026-07-19
+
+### Added (Thêm mới)
+- Tự động kiểm tra và đồng bộ dữ liệu mới từ Google Drive (Auto-Pull) ngay khi mở ứng dụng hoặc khi thiết bị kết nối mạng lại.
+- Thiết lập cơ chế **Chống spam yêu cầu (Anti-Spam Throttling)** bằng cách kiểm tra trạng thái tiến trình hiện hành (`isSyncingRef`) và giới hạn thời gian chạy tối đa 1 lần mỗi 10 giây (`lastSyncAttemptRef`), ngăn chặn tình trạng spam request lên API Google khi mạng chập chờn hoặc tải lại trang liên tục.
+
 ## 🚀 [1.2.3] - 2026-07-19
 
 ### Fixed (Sửa lỗi)

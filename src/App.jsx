@@ -36,6 +36,8 @@ export default function App() {
   const [syncState, setSyncState] = useState('idle'); // 'idle' | 'syncing' | 'success' | 'error'
   const [conflictData, setConflictData] = useState(null);
   const syncStartTimeRef = useRef(0);
+  const isSyncingRef = useRef(false);
+  const lastSyncAttemptRef = useRef(0);
 
   // Xe
   const vehicles = useLiveQuery(() => db.vehicles.toArray());
@@ -83,9 +85,11 @@ export default function App() {
     const handleSyncStart = () => {
       syncStartTimeRef.current = Date.now();
       setSyncState('syncing');
+      isSyncingRef.current = true;
     };
 
     const handleSyncSuccess = () => {
+      isSyncingRef.current = false;
       const elapsedTime = Date.now() - syncStartTimeRef.current;
       const minDuration = 1000; // Tối thiểu 1 giây xoay
       const delay = Math.max(0, minDuration - elapsedTime);
@@ -100,6 +104,7 @@ export default function App() {
     };
 
     const handleSyncError = (e) => {
+      isSyncingRef.current = false;
       const elapsedTime = Date.now() - syncStartTimeRef.current;
       const minDuration = 1000;
       const delay = Math.max(0, minDuration - elapsedTime);
@@ -115,6 +120,7 @@ export default function App() {
     };
 
     const handleSyncConflict = (e) => {
+      isSyncingRef.current = false;
       setConflictData(e.detail);
       setSyncState('idle');
     };
@@ -124,16 +130,16 @@ export default function App() {
     window.addEventListener('google-drive-sync-error', handleSyncError);
     window.addEventListener('google-drive-sync-conflict', handleSyncConflict);
 
-    // Tự động đồng bộ khi online lại, khi mở app có dữ liệu chưa sync hoặc vừa đăng nhập trên thiết bị mới
+    // Tự động đồng bộ khi online lại, khi mở app
     const handleOnlineSync = () => {
       if (navigator.onLine && googleDriveService.isConnected()) {
-        const lastSynced = localStorage.getItem('google_drive_last_synced');
-        const hasUnsyncedChanges = localStorage.getItem('google_drive_unsynced_changes') === 'true';
-
-        // Nếu chưa từng đồng bộ (thiết bị mới vừa đăng nhập) hoặc có thay đổi chưa đồng bộ
-        if (!lastSynced || hasUnsyncedChanges) {
-          googleDriveService.autoBackup();
+        const now = Date.now();
+        // Chống spam: không chạy nếu đang sync hoặc khoảng cách giữa 2 lần check dưới 10 giây
+        if (isSyncingRef.current || (now - lastSyncAttemptRef.current < 10000)) {
+          return;
         }
+        lastSyncAttemptRef.current = now;
+        googleDriveService.autoBackup();
       }
     };
 

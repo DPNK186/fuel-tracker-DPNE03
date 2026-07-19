@@ -401,12 +401,12 @@ export default function SyncBackup() {
         <div className="flex items-center gap-3 text-xs">
           <div>
             <span className="text-slate-500">Phiên bản: </span>
-            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.2.3</span>
+            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.2.4</span>
           </div>
           <div className="h-3 w-[1px] bg-slate-800"></div>
           <div>
             <span className="text-slate-500">Cập nhật: </span>
-            <span className="text-slate-300 font-medium">19/07/2026 19:45</span>
+            <span className="text-slate-300 font-medium">19/07/2026 19:53</span>
           </div>
         </div>
         <div className="text-[10px] text-slate-500 font-semibold pt-2 border-t border-slate-800/60 w-full mt-1">
