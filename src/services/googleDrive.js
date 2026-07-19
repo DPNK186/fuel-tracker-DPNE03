@@ -93,9 +93,6 @@ export const googleDriveService = {
           window.dispatchEvent(new CustomEvent('google-drive-login-success'));
         } else {
           console.error('Google OAuth Callback Error:', tokenResponse.error);
-          if (tokenResponse.error === 'interaction_required' || tokenResponse.error === 'consent_required') {
-            this.logout();
-          }
         }
 
         // Gọi tất cả resolver đang chờ nhận kết quả
@@ -343,7 +340,7 @@ export const googleDriveService = {
     try {
       const fileName = 'fuel_tracker_backup.json';
       const token = await this.ensureValidToken();
-      if (!token) throw new Error('Chưa đăng nhập Google');
+      if (!token) throw new Error('Phiên đăng nhập hết hạn');
 
       // 1. Tìm kiếm file backup hiện tại trên Drive để lấy timestamp
       const query = `name='${fileName}' and 'appDataFolder' in parents`;
@@ -444,10 +441,12 @@ export const googleDriveService = {
       localStorage.setItem('google_drive_unsynced_changes', 'true');
       window.dispatchEvent(new CustomEvent('google-drive-sync-error', { detail: err.message }));
 
-      // Hẹn giờ thử lại sau 10 giây
-      this.retryTimer = setTimeout(() => {
-        this.autoBackup(forceOverwrite);
-      }, 10000);
+      // Chỉ hẹn giờ thử lại sau 10 giây nếu không phải lỗi liên quan đến phiên đăng nhập
+      if (err.message !== 'Chưa đăng nhập Google' && err.message !== 'Phiên đăng nhập hết hạn') {
+        this.retryTimer = setTimeout(() => {
+          this.autoBackup(forceOverwrite);
+        }, 10000);
+      }
     }
   }
 };

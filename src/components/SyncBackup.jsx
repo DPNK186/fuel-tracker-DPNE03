@@ -5,6 +5,7 @@ import { Cloud, CloudLightning, RefreshCw, LogIn, LogOut, Download, Upload, Shie
 
 export default function SyncBackup() {
   const [isConnected, setIsConnected] = useState(false);
+  const [reauthRequired, setReauthRequired] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('info'); // info, success, error
@@ -14,22 +15,27 @@ export default function SyncBackup() {
     // Kích hoạt việc lấy/làm mới token nếu đã từng đăng nhập
     if (googleDriveService.isConnected()) {
       setIsConnected(true);
-      // Chỉ làm mới ngầm nếu Access Token hiện tại đã thực sự hết hạn/không hợp lệ
-      if (!googleDriveService.getAccessToken()) {
+      const activeToken = googleDriveService.getAccessToken();
+      if (!activeToken) {
         googleDriveService.refreshTokenSilently().then(success => {
-          setIsConnected(success);
+          setReauthRequired(!success);
         });
+      } else {
+        setReauthRequired(false);
       }
     } else {
       setIsConnected(false);
+      setReauthRequired(false);
     }
 
     const handleLoginSuccessEvent = () => {
       setIsConnected(true);
+      setReauthRequired(false);
     };
 
     const handleLogoutEvent = () => {
       setIsConnected(false);
+      setReauthRequired(false);
       setLastSynced(null);
     };
 
@@ -56,6 +62,43 @@ export default function SyncBackup() {
       return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     } catch {
       return 'Chưa từng đồng bộ';
+    }
+  };
+
+  // Hàm trợ giúp bọc tác vụ yêu cầu Token, tự động mở popup đăng nhập lại nếu hết hạn
+  const executeWithToken = async (actionFn) => {
+    setLoading(true);
+    try {
+      const token = await googleDriveService.ensureValidToken();
+      if (token) {
+        await actionFn();
+      } else {
+        showStatus('Phiên đăng nhập hết hạn, đang mở cửa sổ kết nối lại...', 'info');
+        
+        // Đăng ký sự kiện thành công một lần để chạy lại tác vụ
+        const handleSuccess = async () => {
+          window.removeEventListener('google-drive-login-success', handleSuccess);
+          try {
+            setLoading(true);
+            showStatus('Đang thực hiện tác vụ...', 'info');
+            await actionFn();
+          } catch (err) {
+            console.error(err);
+            showStatus('Thất bại: ' + err.message, 'error');
+          } finally {
+            setLoading(false);
+          }
+        };
+        window.addEventListener('google-drive-login-success', handleSuccess);
+        
+        // Mở popup login
+        googleDriveService.login();
+      }
+    } catch (err) {
+      console.error(err);
+      showStatus('Thất bại: ' + err.message, 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -92,11 +135,9 @@ export default function SyncBackup() {
   };
 
   // Sao lưu lên Google Drive
-  const handleCloudBackup = async () => {
-    setLoading(true);
-    showStatus('Đang nén dữ liệu và tải lên...', 'info');
-    window.dispatchEvent(new CustomEvent('google-drive-sync-start'));
-    try {
+  const handleCloudBackup = () => {
+    executeWithToken(async () => {
+      window.dispatchEvent(new CustomEvent('google-drive-sync-start'));
       const data = await getDBData();
       await googleDriveService.backup(data);
       const syncTime = new Date().toISOString();
@@ -104,33 +145,21 @@ export default function SyncBackup() {
       setLastSynced(syncTime);
       window.dispatchEvent(new CustomEvent('google-drive-sync-success', { detail: syncTime }));
       showStatus('Sao lưu lên Google Drive thành công!', 'success');
-    } catch (err) {
-      console.error(err);
-      window.dispatchEvent(new CustomEvent('google-drive-sync-error', { detail: err.message }));
-      showStatus('Sao lưu thất bại: ' + err.message, 'error');
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   // Phục hồi từ Google Drive
-  const handleCloudRestore = async () => {
+  const handleCloudRestore = () => {
     if (!confirm('Hành động này sẽ ghi đè toàn bộ dữ liệu hiện tại tại thiết bị cục bộ của bạn. Bạn có muốn tiếp tục?')) {
       return;
     }
     
-    setLoading(true);
-    showStatus('Đang tải dữ liệu từ Google Drive...', 'info');
-    try {
+    executeWithToken(async () => {
+      showStatus('Đang tải dữ liệu từ Google Drive...', 'info');
       const data = await googleDriveService.restore();
       await importToDB(data);
       showStatus('Khôi phục dữ liệu thành công! Ứng dụng đã cập nhật.', 'success');
-    } catch (err) {
-      console.error(err);
-      showStatus('Khôi phục thất bại: ' + err.message, 'error');
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   // Export dữ liệu ra file JSON cục bộ (Offline Backup)
@@ -216,27 +245,55 @@ export default function SyncBackup() {
 
         <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-5 text-center mb-6">
           {isConnected ? (
-            <div className="space-y-4">
-              <div className="flex justify-center">
-                <div className="bg-brand-500/10 p-4 rounded-full border border-brand-500/20 text-brand-400 animate-pulse">
-                  <Cloud className="w-12 h-12" />
+            reauthRequired ? (
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <div className="bg-rose-500/10 p-4 rounded-full border border-rose-500/20 text-rose-400 animate-pulse">
+                    <CloudLightning className="w-12 h-12" />
+                  </div>
                 </div>
+                <div>
+                  <p className="font-semibold text-slate-200">Phiên kết nối hết hạn</p>
+                  <p className="text-xs text-slate-500 mt-1">Vui lòng kết nối lại tài khoản để tiếp tục tự động sao lưu dữ liệu</p>
+                </div>
+                <button
+                  onClick={handleLogin}
+                  className="w-full bg-brand-500 hover:bg-brand-600 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all duration-150 shadow-lg shadow-brand-500/10"
+                >
+                  <LogIn className="w-5 h-5" />
+                  Kết nối lại Google Drive
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-900/30 px-3 py-1.5 rounded-lg transition"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Hủy kết nối tài khoản
+                </button>
               </div>
-              <div>
-                <p className="font-semibold text-slate-200">Đã kết nối Google Drive</p>
-                <p className="text-xs text-slate-500 mt-1">Dữ liệu được lưu an toàn trong thư mục AppData riêng tư</p>
-                <p className="text-xs text-brand-400 mt-2 bg-brand-500/5 py-1 px-3 rounded-lg border border-brand-500/10 inline-block font-medium">
-                  Đồng bộ lần cuối: {formatDateTime(lastSynced)}
-                </p>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex justify-center">
+                  <div className="bg-brand-500/10 p-4 rounded-full border border-brand-500/20 text-brand-400 animate-pulse">
+                    <Cloud className="w-12 h-12" />
+                  </div>
+                </div>
+                <div>
+                  <p className="font-semibold text-slate-200">Đã kết nối Google Drive</p>
+                  <p className="text-xs text-slate-500 mt-1">Dữ liệu được lưu an toàn trong thư mục AppData riêng tư</p>
+                  <p className="text-xs text-brand-400 mt-2 bg-brand-500/5 py-1 px-3 rounded-lg border border-brand-500/10 inline-block font-medium">
+                    Đồng bộ lần cuối: {formatDateTime(lastSynced)}
+                  </p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-900/30 px-3 py-1.5 rounded-lg transition"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Đăng xuất tài khoản
+                </button>
               </div>
-              <button
-                onClick={handleLogout}
-                className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-900/30 px-3 py-1.5 rounded-lg transition"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                Đăng xuất tài khoản
-              </button>
-            </div>
+            )
           ) : (
             <div className="space-y-4">
               <div className="flex justify-center">
@@ -273,7 +330,7 @@ export default function SyncBackup() {
           )}
         </div>
 
-        {isConnected && (
+        {isConnected && !reauthRequired && (
           <div className="grid grid-cols-2 gap-4">
             <button
               onClick={handleCloudBackup}
@@ -344,12 +401,12 @@ export default function SyncBackup() {
         <div className="flex items-center gap-3 text-xs">
           <div>
             <span className="text-slate-500">Phiên bản: </span>
-            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.2.2</span>
+            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.2.3</span>
           </div>
           <div className="h-3 w-[1px] bg-slate-800"></div>
           <div>
             <span className="text-slate-500">Cập nhật: </span>
-            <span className="text-slate-300 font-medium">17/07/2026 22:15</span>
+            <span className="text-slate-300 font-medium">19/07/2026 19:45</span>
           </div>
         </div>
         <div className="text-[10px] text-slate-500 font-semibold pt-2 border-t border-slate-800/60 w-full mt-1">

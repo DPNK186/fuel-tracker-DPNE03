@@ -99,13 +99,18 @@ export default function App() {
       }, delay);
     };
 
-    const handleSyncError = () => {
+    const handleSyncError = (e) => {
       const elapsedTime = Date.now() - syncStartTimeRef.current;
       const minDuration = 1000;
       const delay = Math.max(0, minDuration - elapsedTime);
 
       setTimeout(() => {
-        setSyncState('error');
+        const errorMsg = e?.detail || '';
+        if (errorMsg === 'Phiên đăng nhập hết hạn' || errorMsg === 'Chưa đăng nhập Google') {
+          setSyncState('needs_reauth');
+        } else {
+          setSyncState('error');
+        }
       }, delay);
     };
 
@@ -323,6 +328,11 @@ export default function App() {
                 <Cloud className="w-3.5 h-3.5 text-emerald-400 animate-fade-in" />
                 <Check className="w-2.5 h-2.5 text-emerald-400" />
                 Đã Sync
+              </span>
+            ) : syncState === 'needs_reauth' ? (
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20" title="Phiên đăng nhập Google hết hạn. Vui lòng vào tab Đồng bộ để kết nối lại.">
+                <Cloud className="w-3.5 h-3.5 text-rose-400" />
+                Cần kết nối lại
               </span>
             ) : syncState === 'error' ? (
               <span className="flex items-center gap-1 text-[10px] font-semibold text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20" title="Đồng bộ lỗi, sẽ thử lại sau 10 giây">

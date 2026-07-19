@@ -2,6 +2,15 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.2.3] - 2026-07-19
+
+### Fixed (Sửa lỗi)
+- Khắc phục triệt để lỗi mất trạng thái đăng nhập Google (đặc biệt là trên Android PWA sau một thời gian không sử dụng).
+- Không tự động đăng xuất (logout) khi silent refresh thất bại vì các chính sách cookies chặn luồng ngầm trên thiết bị di động/localhost.
+- Bổ sung giao diện "Phiên kết nối hết hạn" yêu cầu người dùng kết nối lại trực quan thay vì tự động xóa sạch session và đưa về trạng thái trắng.
+- Tự động gợi ý cửa sổ đăng nhập lại khi người dùng nhấn "Sao lưu" hoặc "Khôi phục" trong khi session đã hết hạn, và tiếp tục chạy tác vụ ngay sau khi đăng nhập thành công.
+- Tích hợp trạng thái hiển thị "Cần kết nối lại" trên thanh trạng thái đồng bộ Header.
+
 ## 🚀 [1.2.2] - 2026-07-17
 
 ### Fixed (Sửa lỗi)
