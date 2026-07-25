@@ -2,6 +2,13 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.2.6] - 2026-07-25
+
+### Fixed (Sửa lỗi)
+- Chuyển đổi tham số gia hạn token ngầm từ `prompt: ''` thành `prompt: 'none'` chuẩn theo quy định của Google Identity Services (GIS) SDK.
+- Ngăn chặn 100% tình trạng Google SDK tự ý nảy cửa sổ Pop-up đòi đăng nhập sau 1 giờ hoạt động ngầm (nguyên nhân gây kích hoạt bộ chặn Pop-ups Blocked của trình duyệt Chrome).
+- Tự động nhận và cập nhật Access Token ngầm trực tiếp vào `localStorage` mà không làm gián đoạn hay ảnh hưởng tới thao tác của người dùng trên màn hình.
+
 ## 🚀 [1.2.5] - 2026-07-25
 
 ### Fixed (Sửa lỗi & Tối ưu)

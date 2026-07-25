@@ -207,7 +207,8 @@ export const googleDriveService = {
       const client = this.initTokenClient();
       if (client) {
         this.pendingResolvers.push(resolve);
-        client.requestAccessToken({ prompt: '' });
+        // Sử dụng prompt: 'none' chuẩn Google GIS để đảm bảo 100% không bao giờ tự ý bật popup màn hình
+        client.requestAccessToken({ prompt: 'none' });
       } else {
         resolve(false);
       }
