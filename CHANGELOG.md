@@ -2,6 +2,14 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.2.5] - 2026-07-25
+
+### Fixed (Sửa lỗi & Tối ưu)
+- Khắc phục triệt để lỗi thời gian duy trì phiên đăng nhập Google Sign-In bị quá ngắn (< 1 ngày).
+- Tích hợp hàm bất đồng bộ `waitForGoogleSDK()` hỗ trợ kiên nhẫn chờ thư viện Google Identity Services (`window.google.accounts.oauth2`) sẵn sàng trước khi kiểm tra hoặc làm mới token, giải quyết hiện tượng xung đột khởi chạy (Race Condition) báo nhầm "Hết hạn phiên".
+- Bổ sung **Cơ chế gia hạn ngầm chủ động (Proactive Background Token Refresh)** tự động đặt lịch làm mới token trước khi hết hạn 15 phút (mỗi 45 phút) trong quá trình người dùng sử dụng ứng dụng.
+- Tự động thực hiện Silent Refresh ngầm khi mở lại ứng dụng sau 1 ngày (hoặc nhiều ngày), giúp người dùng luôn duy trì phiên làm việc liền mạch mà không phải bấm kết nối lại.
+
 ## 🚀 [1.2.4] - 2026-07-19
 
 ### Added (Thêm mới)

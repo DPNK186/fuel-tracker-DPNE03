@@ -65,16 +65,40 @@ export const googleDriveService = {
   // Timer lưu trữ retry ngầm
   retryTimer: null,
 
+  // Timer duy trì token ngầm
+  proactiveRefreshTimer: null,
+
   // Google GIS Token Client
   tokenClient: null,
 
   // Các Promise resolve khi nhận callback từ GIS
   pendingResolvers: [],
 
+  // Chờ thư viện Google SDK sẵn sàng (tối đa timeoutMs)
+  waitForGoogleSDK(timeoutMs = 5000) {
+    return new Promise((resolve) => {
+      if (window.google?.accounts?.oauth2) {
+        resolve(true);
+        return;
+      }
+
+      const startTime = Date.now();
+      const interval = setInterval(() => {
+        if (window.google?.accounts?.oauth2) {
+          clearInterval(interval);
+          resolve(true);
+        } else if (Date.now() - startTime >= timeoutMs) {
+          clearInterval(interval);
+          resolve(false);
+        }
+      }, 200);
+    });
+  },
+
   // Khởi tạo Google Token Client
   initTokenClient() {
     if (this.tokenClient) return this.tokenClient;
-    if (!window.google) return null;
+    if (!window.google?.accounts?.oauth2) return null;
 
     this.tokenClient = window.google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
@@ -90,6 +114,9 @@ export const googleDriveService = {
           localStorage.setItem('google_token_expires_at', expiresAt.toString());
           localStorage.setItem('google_logged_in', 'true');
 
+          // Lên lịch gia hạn tự động ngầm trước khi token hết hạn
+          this.scheduleProactiveRefresh(parseInt(expiresIn));
+
           window.dispatchEvent(new CustomEvent('google-drive-login-success'));
         } else {
           console.error('Google OAuth Callback Error:', tokenResponse.error);
@@ -103,6 +130,23 @@ export const googleDriveService = {
     });
 
     return this.tokenClient;
+  },
+
+  // Đặt lịch làm mới token ngầm trước khi token hết hạn 15 phút (hoặc tối thiểu 30 giây)
+  scheduleProactiveRefresh(expiresInSeconds) {
+    if (this.proactiveRefreshTimer) {
+      clearTimeout(this.proactiveRefreshTimer);
+      this.proactiveRefreshTimer = null;
+    }
+
+    // Thời điểm làm mới: Trước khi hết hạn 15 phút (900s), tối thiểu sau 30 giây
+    const refreshDelayMs = Math.max(30000, (expiresInSeconds - 900) * 1000);
+
+    this.proactiveRefreshTimer = setTimeout(() => {
+      if (this.isConnected()) {
+        this.refreshTokenSilently();
+      }
+    }, refreshDelayMs);
   },
 
   // Lấy Access Token từ localStorage (chỉ trả về nếu còn hạn)
@@ -134,14 +178,15 @@ export const googleDriveService = {
   },
 
   // Gọi đăng nhập Google hiển thị Popup
-  login() {
+  async login() {
     if (!CLIENT_ID) {
       alert('Vui lòng cấu hình VITE_GOOGLE_CLIENT_ID trong file .env');
       return;
     }
 
-    if (!window.google) {
-      alert('Thư viện đăng nhập Google đang tải, vui lòng thử lại sau vài giây.');
+    const sdkReady = await this.waitForGoogleSDK(5000);
+    if (!sdkReady) {
+      alert('Thư viện đăng nhập Google chưa thể tải xong, vui lòng kiểm tra kết nối mạng và thử lại sau.');
       return;
     }
 
@@ -152,13 +197,13 @@ export const googleDriveService = {
   },
 
   // Làm mới token ngầm không hiện popup
-  refreshTokenSilently() {
-    return new Promise((resolve) => {
-      if (!window.google) {
-        resolve(false);
-        return;
-      }
+  async refreshTokenSilently() {
+    const sdkReady = await this.waitForGoogleSDK(5000);
+    if (!sdkReady) {
+      return false;
+    }
 
+    return new Promise((resolve) => {
       const client = this.initTokenClient();
       if (client) {
         this.pendingResolvers.push(resolve);
@@ -170,6 +215,10 @@ export const googleDriveService = {
   },
 
   logout() {
+    if (this.proactiveRefreshTimer) {
+      clearTimeout(this.proactiveRefreshTimer);
+      this.proactiveRefreshTimer = null;
+    }
     localStorage.removeItem('google_access_token');
     localStorage.removeItem('google_token_expires_at');
     localStorage.removeItem('google_logged_in');

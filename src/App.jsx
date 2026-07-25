@@ -69,9 +69,19 @@ export default function App() {
 
   // Quản lý trạng thái Online/Offline & Đồng bộ Google Drive
   useEffect(() => {
-    // Thực hiện tự động làm mới token ngầm khi khởi chạy nếu đã kết nối trước đó và token hết hạn
-    if (googleDriveService.isConnected() && !googleDriveService.getAccessToken()) {
-      googleDriveService.refreshTokenSilently();
+    // Thực hiện tự động làm mới token ngầm khi khởi chạy nếu đã kết nối trước đó
+    if (googleDriveService.isConnected()) {
+      googleDriveService.ensureValidToken().then(token => {
+        if (token) {
+          const expiresAt = localStorage.getItem('google_token_expires_at');
+          if (expiresAt) {
+            const remainingSecs = Math.floor((parseInt(expiresAt) - Date.now()) / 1000);
+            if (remainingSecs > 0) {
+              googleDriveService.scheduleProactiveRefresh(remainingSecs);
+            }
+          }
+        }
+      });
     }
 
     const handleOnline = () => setIsOnline(true);
