@@ -2,6 +2,12 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.2.8] - 2026-07-26
+
+### Improved (Cải tiến giao diện & trải nghiệm)
+- **Giao diện Header Sync Badge 2 dòng:** Thiết kế bố cục 2 dòng gọn gàng (Dòng 1: Trạng thái Đã Sync/Chưa Sync/Syncing; Dòng 2: Mốc thời gian tương đối hoặc cảnh báo), ngăn chặn 100% hiện tượng ngắt dòng ngẫu nhiên trên màn hình di động nhỏ.
+- **Hệ thống định dạng mốc thời gian đa nấc:** Hỗ trợ tính thời gian tương đối linh hoạt dưới 60s (`vừa xong`), dưới 60m (`Xp trước`), dưới 24h (`Xh trước`), từ 1 đến 7 ngày (`X ngày trước`) và trên 7 ngày (`DD/MM`).
+
 ## 🚀 [1.2.7] - 2026-07-26
 
 ### Added (Thêm mới)

@@ -53,7 +53,7 @@ export default function App() {
       if (diffSecs < 60) return 'vừa xong';
       if (diffMins < 60) return `${diffMins}p trước`;
       if (diffHours < 24) return `${diffHours}h trước`;
-      if (diffDays < 7) return `${diffDays}ngày trước`;
+      if (diffDays < 7) return `${diffDays} ngày trước`;
 
       const pad = (n) => n.toString().padStart(2, '0');
       return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
@@ -438,24 +438,39 @@ export default function App() {
           <button
             type="button"
             onClick={() => setActiveTab('sync')}
-            className="transition-all duration-300 active:scale-95 text-left"
+            className="transition-all duration-300 active:scale-95 text-right shrink-0"
             title="Nhấp để chuyển sang tab Đồng bộ"
           >
             {syncState === 'syncing' ? (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 animate-pulse">
-                <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
-                Syncing...
+              <span className="flex flex-col items-end text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/20 animate-pulse whitespace-nowrap">
+                <span className="flex items-center gap-1 text-[10px] font-bold leading-tight">
+                  <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                  Syncing...
+                </span>
+                <span className="text-[9px] font-semibold text-amber-400/80 leading-tight">
+                  Đang kết nối
+                </span>
               </span>
             ) : hasUnsynced ? (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 animate-pulse">
-                <Cloud className="w-3.5 h-3.5 text-amber-400" />
-                Chưa Sync (Có data mới)
+              <span className="flex flex-col items-end text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/20 animate-pulse whitespace-nowrap">
+                <span className="flex items-center gap-1 text-[10px] font-bold leading-tight">
+                  <Cloud className="w-3 h-3 text-amber-400" />
+                  Chưa Sync
+                </span>
+                <span className="text-[9px] font-semibold text-amber-400/80 leading-tight">
+                  Có data mới
+                </span>
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                <Cloud className="w-3.5 h-3.5 text-emerald-400 animate-fade-in" />
-                <Check className="w-2.5 h-2.5 text-emerald-400" />
-                Đã Sync ({formatLastSyncHeader(lastSyncedTime)})
+              <span className="flex flex-col items-end text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-xl border border-emerald-500/20 whitespace-nowrap">
+                <span className="flex items-center gap-1 text-[10px] font-bold leading-tight">
+                  <Cloud className="w-3 h-3 text-emerald-400 animate-fade-in" />
+                  <Check className="w-2.5 h-2.5 text-emerald-400" />
+                  Đã Sync
+                </span>
+                <span className="text-[9px] font-semibold text-emerald-400/80 leading-tight">
+                  {formatLastSyncHeader(lastSyncedTime)}
+                </span>
               </span>
             )}
           </button>
