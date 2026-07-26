@@ -2,6 +2,15 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.2.7] - 2026-07-26
+
+### Added (Thêm mới)
+- **Sao Lưu Thủ Công Theo Yêu Cầu (On-Demand Manual Sync):** Loại bỏ hoàn toàn cơ chế tự động auto-backup ngầm để tránh gây phiền hà hoặc đòi hỏi popup đăng nhập lại liên tục; mặc định lưu trữ 100% Offline-First tại Local IndexedDB.
+- **Hợp Nhất Dữ Liệu Thông Minh (Smart Data Merge):** Khi bấm nút "Sao lưu & Hợp nhất lên Google Drive", ứng dụng tự động đối chiếu, khử trùng lặp và gộp toàn bộ lịch sử đổ xăng, chi phí và thông tin xe từ cả Local và Cloud.
+- **Chống Trùng Lặp Xe Theo Biển Số:** Chuẩn hóa biển số xe (`normalizePlate`), cảnh báo khi thêm xe trùng biển số và tự động gộp các xe trùng biển số trên Local và Cloud thành 1 phương tiện duy nhất.
+- **Hợp Nhất Xe Khi Chỉnh Sửa & Xác Minh Odometer:** Khi sửa thông tin một xe có biển số trùng với xe đã có, ứng dụng kích hoạt luồng hợp nhất dữ liệu kèm kiểm tra tính hợp lệ của Odometer tăng dần theo thời gian.
+- **Bộ Đếm Last Cloud Sync & Chỉ Báo Chưa Sync Trên Header:** Hiển thị mốc thời gian đồng bộ gần nhất ("Đã Sync (15p trước)") và tự động bật nhãn vàng nhấp nháy ("Chưa Sync (Có data mới)") khi có thay đổi chưa sao lưu. Chạm trực tiếp vào nhãn để mở nhanh tab Đồng bộ.
+
 ## 🚀 [1.2.6] - 2026-07-25
 
 ### Fixed (Sửa lỗi)

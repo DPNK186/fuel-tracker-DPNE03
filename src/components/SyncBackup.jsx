@@ -134,31 +134,28 @@ export default function SyncBackup() {
     };
   };
 
-  // Sao lưu lên Google Drive
-  const handleCloudBackup = () => {
+  // Sao lưu và Hợp nhất thông minh lên Google Drive
+  const handleCloudSmartBackup = () => {
     executeWithToken(async () => {
-      window.dispatchEvent(new CustomEvent('google-drive-sync-start'));
-      const data = await getDBData();
-      await googleDriveService.backup(data);
-      const syncTime = new Date().toISOString();
-      localStorage.setItem('google_drive_last_synced', syncTime);
+      showStatus('Đang đối chiếu và hợp nhất dữ liệu với Google Drive...', 'info');
+      const result = await googleDriveService.smartBackupAndMerge();
+      const syncTime = result.timestamp;
       setLastSynced(syncTime);
-      window.dispatchEvent(new CustomEvent('google-drive-sync-success', { detail: syncTime }));
-      showStatus('Sao lưu lên Google Drive thành công!', 'success');
+      showStatus(`Đã hợp nhất & sao lưu thành công! (${result.vehiclesCount} xe, ${result.refuelingsCount} lần đổ xăng, ${result.expensesCount} chi phí)`, 'success');
     });
   };
 
   // Phục hồi từ Google Drive
   const handleCloudRestore = () => {
-    if (!confirm('Hành động này sẽ ghi đè toàn bộ dữ liệu hiện tại tại thiết bị cục bộ của bạn. Bạn có muốn tiếp tục?')) {
+    if (!confirm('Hành động này sẽ tải lại bản sao lưu từ Google Drive và hợp nhất với dữ liệu thiết bị của bạn. Tiếp tục?')) {
       return;
     }
     
     executeWithToken(async () => {
-      showStatus('Đang tải dữ liệu từ Google Drive...', 'info');
-      const data = await googleDriveService.restore();
-      await importToDB(data);
-      showStatus('Khôi phục dữ liệu thành công! Ứng dụng đã cập nhật.', 'success');
+      showStatus('Đang tải và hợp nhất dữ liệu từ Google Drive...', 'info');
+      const result = await googleDriveService.smartBackupAndMerge();
+      setLastSynced(result.timestamp);
+      showStatus('Khôi phục & hợp nhất dữ liệu thành công! Ứng dụng đã cập nhật.', 'success');
     });
   };
 
@@ -203,8 +200,6 @@ export default function SyncBackup() {
         const parsedData = JSON.parse(event.target.result);
         await importToDB(parsedData);
         showStatus('Đã khôi phục dữ liệu từ file JSON thành công!', 'success');
-        // Tự động đồng bộ lên Drive ngầm sau khi import local
-        googleDriveService.autoBackup();
       } catch (err) {
         showStatus('Khôi phục thất bại: ' + err.message, 'error');
       } finally {
@@ -248,20 +243,20 @@ export default function SyncBackup() {
             reauthRequired ? (
               <div className="space-y-4">
                 <div className="flex justify-center">
-                  <div className="bg-rose-500/10 p-4 rounded-full border border-rose-500/20 text-rose-400 animate-pulse">
+                  <div className="bg-brand-500/10 p-4 rounded-full border border-brand-500/20 text-brand-400">
                     <CloudLightning className="w-12 h-12" />
                   </div>
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-200">Phiên kết nối hết hạn</p>
-                  <p className="text-xs text-slate-500 mt-1">Vui lòng kết nối lại tài khoản để tiếp tục tự động sao lưu dữ liệu</p>
+                  <p className="font-semibold text-slate-200">Đã từng kết nối Google Drive</p>
+                  <p className="text-xs text-slate-500 mt-1">Bấm nút bên dưới để Đăng nhập và Hợp nhất dữ liệu ngay lập tức</p>
                 </div>
                 <button
-                  onClick={handleLogin}
+                  onClick={handleCloudSmartBackup}
                   className="w-full bg-brand-500 hover:bg-brand-600 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all duration-150 shadow-lg shadow-brand-500/10"
                 >
                   <LogIn className="w-5 h-5" />
-                  Kết nối lại Google Drive
+                  Đăng nhập & Hợp nhất Google Drive
                 </button>
                 <button
                   onClick={handleLogout}
@@ -274,13 +269,13 @@ export default function SyncBackup() {
             ) : (
               <div className="space-y-4">
                 <div className="flex justify-center">
-                  <div className="bg-brand-500/10 p-4 rounded-full border border-brand-500/20 text-brand-400 animate-pulse">
+                  <div className="bg-brand-500/10 p-4 rounded-full border border-brand-500/20 text-brand-400">
                     <Cloud className="w-12 h-12" />
                   </div>
                 </div>
                 <div>
                   <p className="font-semibold text-slate-200">Đã kết nối Google Drive</p>
-                  <p className="text-xs text-slate-500 mt-1">Dữ liệu được lưu an toàn trong thư mục AppData riêng tư</p>
+                  <p className="text-xs text-slate-500 mt-1">Sao lưu thủ công & Hợp nhất an toàn vào thư mục riêng tư</p>
                   <p className="text-xs text-brand-400 mt-2 bg-brand-500/5 py-1 px-3 rounded-lg border border-brand-500/10 inline-block font-medium">
                     Đồng bộ lần cuối: {formatDateTime(lastSynced)}
                   </p>
@@ -302,29 +297,20 @@ export default function SyncBackup() {
                 </div>
               </div>
               <div>
-                <p className="font-semibold text-slate-300">Chưa kết nối đám mây</p>
-                <p className="text-xs text-slate-500 mt-1">Kết nối tài khoản Google để tự động sao lưu an toàn khi có mạng</p>
+                <p className="font-semibold text-slate-300">Sao lưu đám mây theo yêu cầu</p>
+                <p className="text-xs text-slate-500 mt-1">Kết nối tài khoản Google để sao lưu & hợp nhất dữ liệu khi cần</p>
               </div>
               <button
-                onClick={handleLogin}
-                className="w-full bg-slate-100 hover:bg-white text-slate-900 font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all duration-150"
+                onClick={handleCloudSmartBackup}
+                className="w-full bg-brand-500 hover:bg-brand-600 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all duration-150 shadow-lg shadow-brand-500/10"
               >
                 <LogIn className="w-5 h-5" />
-                Đăng nhập với Google
+                Đăng nhập & Sao lưu ngay
               </button>
               <div className="bg-slate-900/80 border border-dashed border-slate-800 rounded-2xl p-4 text-left space-y-2 mt-4">
                 <p className="text-[11px] text-slate-400 leading-relaxed">
-                  📌 <strong className="text-slate-300">Lưu ý dành cho thành viên mới:</strong> Do ứng dụng đang trong giai đoạn vận hành nội bộ, nếu bạn gặp lỗi chặn đăng nhập từ Google (Error 403: access_denied), vui lòng gửi địa chỉ Gmail của bạn tới Quản trị viên ĐPNE03 qua mail để được duyệt cấp quyền kết nối hệ thống.
+                  📌 <strong className="text-slate-300">Lưu ý:</strong> Mặc định toàn bộ dữ liệu luôn được lưu an toàn tại máy của bạn. Khi bấm nút Sao lưu, hệ thống sẽ tự động tải bản sao lưu cũ trên Drive để hợp nhất mà không bao giờ làm mất dữ liệu của bạn.
                 </p>
-                <div className="text-right">
-                  <a
-                    href="mailto:dpn.e103a@gmail.com?subject=Yêu cầu cấp quyền Sync ứng dụng Xăng Xe"
-                    className="inline-flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-300 font-semibold transition"
-                  >
-                    <span>Gửi Email đăng ký</span>
-                    <span>→</span>
-                  </a>
-                </div>
               </div>
             </div>
           )}
@@ -333,12 +319,12 @@ export default function SyncBackup() {
         {isConnected && !reauthRequired && (
           <div className="grid grid-cols-2 gap-4">
             <button
-              onClick={handleCloudBackup}
+              onClick={handleCloudSmartBackup}
               disabled={loading}
               className="bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition active:scale-95 shadow-lg shadow-brand-500/10"
             >
               <Upload className="w-4 h-4" />
-              Sao lưu lên đám mây
+              Sao lưu & Hợp nhất
             </button>
             <button
               onClick={handleCloudRestore}

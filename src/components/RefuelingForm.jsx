@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { googleDriveService } from '../services/googleDrive';
 import { Fuel, Calendar, Compass, Coins, PlusCircle, Trash2, Edit2, TrendingUp, X, AlertTriangle } from 'lucide-react';
 
 export default function RefuelingForm({ currentVehicleId, expandForm, setExpandForm }) {
@@ -217,8 +216,9 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
       setDate(new Date().toISOString().split('T')[0]);
       setExpandForm(false);
 
-      // Kích hoạt auto backup ngầm
-      googleDriveService.autoBackup();
+      // Đặt cờ báo có dữ liệu mới chưa đồng bộ
+      localStorage.setItem('google_drive_unsynced_changes', 'true');
+      window.dispatchEvent(new CustomEvent('unsynced-changes-updated'));
     } catch (err) {
       console.error('Error saving refueling log:', err);
     }
@@ -242,8 +242,8 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
   const handleDelete = async (id) => {
     if (confirm('Bạn có chắc chắn muốn xóa bản ghi này?')) {
       await db.refuelings.delete(id);
-      // Kích hoạt auto backup ngầm
-      googleDriveService.autoBackup();
+      localStorage.setItem('google_drive_unsynced_changes', 'true');
+      window.dispatchEvent(new CustomEvent('unsynced-changes-updated'));
     }
   };
 

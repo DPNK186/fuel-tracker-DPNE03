@@ -6,7 +6,7 @@ import RefuelingForm from './components/RefuelingForm';
 import ExpenseForm from './components/ExpenseForm';
 import SyncBackup from './components/SyncBackup';
 import { useRegisterSW } from 'virtual:pwa-register/react'; // Import hook đăng ký SW chủ động
-import { googleDriveService, importToDB } from './services/googleDrive';
+import { googleDriveService, importToDB, normalizePlate } from './services/googleDrive';
 import { 
   LayoutDashboard, 
   Fuel, 
@@ -16,8 +16,6 @@ import {
   Bike, 
   Plus, 
   X, 
-  Wifi, 
-  WifiOff,
   RefreshCw,
   Check,
   AlertCircle
@@ -25,7 +23,6 @@ import {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [showVehicleModal, setShowVehicleModal] = useState(false);
 
   // Điều phối mở rộng form
@@ -35,9 +32,35 @@ export default function App() {
   // Đồng bộ Google Drive
   const [syncState, setSyncState] = useState('idle'); // 'idle' | 'syncing' | 'success' | 'error'
   const [conflictData, setConflictData] = useState(null);
+  const [lastSyncedTime, setLastSyncedTime] = useState(localStorage.getItem('google_drive_last_synced') || null);
+  const [hasUnsynced, setHasUnsynced] = useState(localStorage.getItem('google_drive_unsynced_changes') === 'true');
   const syncStartTimeRef = useRef(0);
   const isSyncingRef = useRef(false);
-  const lastSyncAttemptRef = useRef(0);
+
+  // Định dạng thời gian tương đối cho nhãn Last Sync trên Header
+  const formatLastSyncHeader = (isoString) => {
+    if (!isoString) return 'Chưa sync';
+    try {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return 'Chưa sync';
+      const now = new Date();
+      const diffMs = now.getTime() - d.getTime();
+      const diffSecs = Math.floor(diffMs / 1000);
+      const diffMins = Math.floor(diffSecs / 60);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffSecs < 60) return 'vừa xong';
+      if (diffMins < 60) return `${diffMins}p trước`;
+      if (diffHours < 24) return `${diffHours}h trước`;
+      if (diffDays < 7) return `${diffDays}ngày trước`;
+
+      const pad = (n) => n.toString().padStart(2, '0');
+      return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+    } catch {
+      return 'Chưa sync';
+    }
+  };
 
   // Xe
   const vehicles = useLiveQuery(() => db.vehicles.toArray());
@@ -67,30 +90,16 @@ export default function App() {
     updateServiceWorker,
   } = useRegisterSW();
 
-  // Quản lý trạng thái Online/Offline & Đồng bộ Google Drive
+  // Quản lý trạng thái Đồng bộ Google Drive & Header Sync Badge
   useEffect(() => {
-    // Thực hiện tự động làm mới token ngầm khi khởi chạy nếu đã kết nối trước đó
-    if (googleDriveService.isConnected()) {
-      googleDriveService.ensureValidToken().then(token => {
-        if (token) {
-          const expiresAt = localStorage.getItem('google_token_expires_at');
-          if (expiresAt) {
-            const remainingSecs = Math.floor((parseInt(expiresAt) - Date.now()) / 1000);
-            if (remainingSecs > 0) {
-              googleDriveService.scheduleProactiveRefresh(remainingSecs);
-            }
-          }
-        }
-      });
-    }
-
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
     let successTimeout;
+
+    const updateSyncHeaderState = () => {
+      setLastSyncedTime(localStorage.getItem('google_drive_last_synced') || null);
+      setHasUnsynced(localStorage.getItem('google_drive_unsynced_changes') === 'true');
+    };
+
+    updateSyncHeaderState();
 
     const handleSyncStart = () => {
       syncStartTimeRef.current = Date.now();
@@ -100,6 +109,7 @@ export default function App() {
 
     const handleSyncSuccess = () => {
       isSyncingRef.current = false;
+      updateSyncHeaderState();
       const elapsedTime = Date.now() - syncStartTimeRef.current;
       const minDuration = 1000; // Tối thiểu 1 giây xoay
       const delay = Math.max(0, minDuration - elapsedTime);
@@ -129,44 +139,23 @@ export default function App() {
       }, delay);
     };
 
-    const handleSyncConflict = (e) => {
-      isSyncingRef.current = false;
-      setConflictData(e.detail);
-      setSyncState('idle');
-    };
-
     window.addEventListener('google-drive-sync-start', handleSyncStart);
     window.addEventListener('google-drive-sync-success', handleSyncSuccess);
     window.addEventListener('google-drive-sync-error', handleSyncError);
-    window.addEventListener('google-drive-sync-conflict', handleSyncConflict);
+    window.addEventListener('unsynced-changes-updated', updateSyncHeaderState);
 
-    // Tự động đồng bộ khi online lại, khi mở app
-    const handleOnlineSync = () => {
-      if (navigator.onLine && googleDriveService.isConnected()) {
-        const now = Date.now();
-        // Chống spam: không chạy nếu đang sync hoặc khoảng cách giữa 2 lần check dưới 10 giây
-        if (isSyncingRef.current || (now - lastSyncAttemptRef.current < 10000)) {
-          return;
-        }
-        lastSyncAttemptRef.current = now;
-        googleDriveService.autoBackup();
-      }
-    };
-
-    handleOnlineSync();
-
-    window.addEventListener('online', handleOnlineSync);
-    window.addEventListener('google-drive-login-success', handleOnlineSync);
+    // Cập nhật nhãn thời gian tương đối mỗi 30 giây
+    const interval = setInterval(() => {
+      setLastSyncedTime(localStorage.getItem('google_drive_last_synced') || null);
+      setHasUnsynced(localStorage.getItem('google_drive_unsynced_changes') === 'true');
+    }, 30000);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
       window.removeEventListener('google-drive-sync-start', handleSyncStart);
       window.removeEventListener('google-drive-sync-success', handleSyncSuccess);
       window.removeEventListener('google-drive-sync-error', handleSyncError);
-      window.removeEventListener('google-drive-sync-conflict', handleSyncConflict);
-      window.removeEventListener('online', handleOnlineSync);
-      window.removeEventListener('google-drive-login-success', handleOnlineSync);
+      window.removeEventListener('unsynced-changes-updated', updateSyncHeaderState);
+      clearInterval(interval);
       clearTimeout(successTimeout);
     };
   }, []);
@@ -270,17 +259,129 @@ export default function App() {
 
     try {
       if (editingVehicleId) {
-        // Chế độ Chỉnh sửa
+        // Chế độ Chỉnh sửa xe
+        if (newVehiclePlate && vehicles && vehicles.length > 0) {
+          const inputNorm = normalizePlate(newVehiclePlate);
+          const targetVehicle = vehicles.find(v => (v.id !== editingVehicleId) && normalizePlate(v.plateNumber) === inputNorm);
+
+          if (targetVehicle) {
+            // Người dùng sửa biển số trùng với một xe đã tạo trước đó -> Kích hoạt luồng HỢP NHẤT XE
+            const confirmMerge = confirm(
+              `Biển số "${newVehiclePlate}" trùng với phương tiện "${targetVehicle.name}".\n\n` +
+              `Bạn có muốn HỢP NHẤT toàn bộ lịch sử đổ xăng & chi phí của xe này vào xe "${targetVehicle.name}" không?`
+            );
+
+            if (!confirmMerge) return;
+
+            // 1. Thu thập và Xác minh dữ liệu Odometer theo chuỗi thời gian
+            const [refuelingsA, refuelingsB, expensesB] = await Promise.all([
+              db.refuelings.where('vehicleId').equals(targetVehicle.id).toArray(),
+              db.refuelings.where('vehicleId').equals(editingVehicleId).toArray(),
+              db.expenses.where('vehicleId').equals(editingVehicleId).toArray()
+            ]);
+
+            // Gộp và lọc bản ghi trùng lặp
+            const mapRefuelings = new Map();
+            [...refuelingsA, ...refuelingsB].forEach(r => {
+              const sig = `sig_${r.date}_${r.odometer}_${r.totalCost}`;
+              if (!mapRefuelings.has(sig)) {
+                mapRefuelings.set(sig, r);
+              }
+            });
+
+            const sortedRefuelings = Array.from(mapRefuelings.values());
+            sortedRefuelings.sort((a, b) => new Date(a.date) - new Date(b.date) || a.odometer - b.odometer);
+
+            // Kiểm tra tính hợp lệ Odometer tăng dần theo mốc ngày
+            let odoAnomaly = null;
+            for (let i = 1; i < sortedRefuelings.length; i++) {
+              const prev = sortedRefuelings[i - 1];
+              const curr = sortedRefuelings[i];
+              if (curr.date > prev.date && Number(curr.odometer) < Number(prev.odometer)) {
+                odoAnomaly = { prev, curr };
+                break;
+              }
+            }
+
+            if (odoAnomaly) {
+              const formatDateStr = (dStr) => {
+                if (!dStr) return '';
+                const [y, m, d] = dStr.split('-');
+                return `${d}/${m}/${y}`;
+              };
+              const warnConfirm = confirm(
+                `⚠️ CẢNH BÁO BẤT THƯỜNG ODOMETER:\n` +
+                `Ngày ${formatDateStr(odoAnomaly.curr.date)} có chỉ số km (${Number(odoAnomaly.curr.odometer).toLocaleString()} km) nhỏ hơn ngày ${formatDateStr(odoAnomaly.prev.date)} (${Number(odoAnomaly.prev.odometer).toLocaleString()} km).\n\n` +
+                `Dữ liệu km giữa 2 xe có dấu hiệu bất thường. Bạn vẫn muốn tiếp tục HỢP NHẤT hay HỦY để kiểm tra lại?`
+              );
+              if (!warnConfirm) return;
+            }
+
+            // 2. Thực hiện Hợp nhất trong một Transaction nguyên tử
+            await db.transaction('rw', db.vehicles, db.refuelings, db.expenses, async () => {
+              // Cập nhật tất cả bản ghi đổ xăng của xe bị gộp sang xe mục tiêu
+              if (refuelingsB.length > 0) {
+                await Promise.all(
+                  refuelingsB.map(r => db.refuelings.update(r.id, { vehicleId: targetVehicle.id }))
+                );
+              }
+              // Cập nhật tất cả bản ghi chi phí của xe bị gộp sang xe mục tiêu
+              if (expensesB.length > 0) {
+                await Promise.all(
+                  expensesB.map(e => db.expenses.update(e.id, { vehicleId: targetVehicle.id }))
+                );
+              }
+              // Cập nhật thông tin xe mục tiêu với tên/dung tích mới nhất nếu có
+              await db.vehicles.update(targetVehicle.id, {
+                name: newVehicleName || targetVehicle.name,
+                plateNumber: newVehiclePlate || targetVehicle.plateNumber,
+                tankCapacity: data.tankCapacity || targetVehicle.tankCapacity
+              });
+              // Xóa xe bị gộp
+              await db.vehicles.delete(editingVehicleId);
+            });
+
+            // Chuyển sang chọn xe mục tiêu
+            setCurrentVehicleId(targetVehicle.id.toString());
+            localStorage.setItem('active_vehicle_id', targetVehicle.id.toString());
+
+            setNewVehicleName('');
+            setNewVehiclePlate('');
+            setNewVehicleTankCapacity('');
+            setShowVehicleModal(false);
+            setEditingVehicleId(null);
+            alert(`Đã hợp nhất thành công toàn bộ dữ liệu sang xe "${targetVehicle.name}"!`);
+            return;
+          }
+        }
+
+        // Trường hợp sửa xe bình thường không trùng biển số khác
         await db.vehicles.update(editingVehicleId, data);
         setEditingVehicleId(null);
       } else {
-        // Chế độ Thêm mới (Bọc dọn dẹp và thêm mới trong một Transaction nguyên tử)
+        // Chế độ Thêm mới xe
+        if (newVehiclePlate && vehicles && vehicles.length > 0) {
+          const inputNorm = normalizePlate(newVehiclePlate);
+          const duplicateVehicle = vehicles.find(v => normalizePlate(v.plateNumber) === inputNorm);
+          if (duplicateVehicle) {
+            alert(`Phương tiện với biển số "${newVehiclePlate}" đã tồn tại dưới tên "${duplicateVehicle.name}". Hệ thống sẽ chọn xe này cho bạn.`);
+            setCurrentVehicleId(duplicateVehicle.id.toString());
+            localStorage.setItem('active_vehicle_id', duplicateVehicle.id.toString());
+            setNewVehicleName('');
+            setNewVehiclePlate('');
+            setNewVehicleTankCapacity('');
+            setShowVehicleModal(false);
+            setEditingVehicleId(null);
+            return;
+          }
+        }
+
+        // Thêm mới xe (Bọc dọn dẹp và thêm mới trong một Transaction nguyên tử)
         let newId;
         await db.transaction('rw', db.vehicles, db.refuelings, db.expenses, async () => {
           const sampleVehicle = await db.vehicles.where('plateNumber').equals('29A-123.45').first();
           if (sampleVehicle) {
             const sampleId = sampleVehicle.id;
-            // Xóa song song dữ liệu mẫu liên kết
             await Promise.all([
               db.vehicles.delete(sampleId),
               db.refuelings.where('vehicleId').equals(sampleId).delete(),
@@ -300,9 +401,10 @@ export default function App() {
       setNewVehiclePlate('');
       setNewVehicleTankCapacity('');
       setShowVehicleModal(false);
-      
-      // Kích hoạt auto backup ngầm sau khi lưu thông tin xe
-      googleDriveService.autoBackup();
+
+      // Bật cờ báo có dữ liệu mới chưa đồng bộ
+      localStorage.setItem('google_drive_unsynced_changes', 'true');
+      window.dispatchEvent(new CustomEvent('unsynced-changes-updated'));
     } catch (err) {
       console.error('Lỗi khi thao tác phương tiện:', err);
       alert('Thao tác phương tiện thất bại: ' + err.message);
@@ -333,41 +435,30 @@ export default function App() {
 
         <div className="flex items-center gap-3">
           {/* Online/Offline Status / Sync Status */}
-          <div className="transition-all duration-300">
+          <button
+            type="button"
+            onClick={() => setActiveTab('sync')}
+            className="transition-all duration-300 active:scale-95 text-left"
+            title="Nhấp để chuyển sang tab Đồng bộ"
+          >
             {syncState === 'syncing' ? (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 animate-pulse">
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 animate-pulse">
                 <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
                 Syncing...
               </span>
-            ) : syncState === 'success' ? (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                <Cloud className="w-3.5 h-3.5 text-emerald-400 animate-fade-in" />
-                <Check className="w-2.5 h-2.5 text-emerald-400" />
-                Đã Sync
-              </span>
-            ) : syncState === 'needs_reauth' ? (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20" title="Phiên đăng nhập Google hết hạn. Vui lòng vào tab Đồng bộ để kết nối lại.">
-                <Cloud className="w-3.5 h-3.5 text-rose-400" />
-                Cần kết nối lại
-              </span>
-            ) : syncState === 'error' ? (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-rose-500 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20" title="Đồng bộ lỗi, sẽ thử lại sau 10 giây">
-                <Cloud className="w-3.5 h-3.5 text-rose-500" />
-                <span className="text-[10px] font-extrabold text-rose-500">X</span>
-                Lỗi Sync
-              </span>
-            ) : isOnline ? (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                <Wifi className="w-3 h-3" />
-                Online
+            ) : hasUnsynced ? (
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20 animate-pulse">
+                <Cloud className="w-3.5 h-3.5 text-amber-400" />
+                Chưa Sync (Có data mới)
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full">
-                <WifiOff className="w-3 h-3" />
-                Offline
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                <Cloud className="w-3.5 h-3.5 text-emerald-400 animate-fade-in" />
+                <Check className="w-2.5 h-2.5 text-emerald-400" />
+                Đã Sync ({formatLastSyncHeader(lastSyncedTime)})
               </span>
             )}
-          </div>
+          </button>
 
           {/* Manage Vehicle Button */}
           <button 

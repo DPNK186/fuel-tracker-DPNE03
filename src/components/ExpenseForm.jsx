@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { googleDriveService } from '../services/googleDrive';
 import { Wrench, Calendar, Compass, Coins, PlusCircle, Trash2, Edit2, Camera, X } from 'lucide-react';
 
 const CATEGORIES = [
@@ -116,8 +115,9 @@ export default function ExpenseForm({ currentVehicleId, expandForm, setExpandFor
       setDate(new Date().toISOString().split('T')[0]);
       setExpandForm(false);
 
-      // Kích hoạt auto backup ngầm
-      googleDriveService.autoBackup();
+      // Đặt cờ báo có dữ liệu mới chưa đồng bộ
+      localStorage.setItem('google_drive_unsynced_changes', 'true');
+      window.dispatchEvent(new CustomEvent('unsynced-changes-updated'));
     } catch (err) {
       console.error('Error saving expense log:', err);
     }
@@ -139,8 +139,8 @@ export default function ExpenseForm({ currentVehicleId, expandForm, setExpandFor
   const handleDelete = async (id) => {
     if (confirm('Bạn có chắc chắn muốn xóa chi phí này?')) {
       await db.expenses.delete(id);
-      // Kích hoạt auto backup ngầm
-      googleDriveService.autoBackup();
+      localStorage.setItem('google_drive_unsynced_changes', 'true');
+      window.dispatchEvent(new CustomEvent('unsynced-changes-updated'));
     }
   };
 
