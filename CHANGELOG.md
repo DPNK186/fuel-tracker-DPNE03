@@ -2,6 +2,11 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.2.9] - 2026-07-26
+
+### Improved (Cải tiến trải nghiệm đồng bộ)
+- **Tự động điều chỉnh giao diện Tab Đồng bộ theo phiên Google:** Giữ thanh Header ở trên cùng luôn sạch sẽ, gọn gàng. Khi hết phiên đăng nhập (Expired Session), thẻ chính trong Tab Đồng bộ tự động đổi sang "Phiên đăng nhập đã hết hạn" kèm nút "Đăng nhập & Hợp nhất Google Drive" giúp đăng nhập lại và đồng bộ chỉ với 1 cú nhấp.
+
 ## 🚀 [1.2.8] - 2026-07-26
 
 ### Improved (Cải tiến giao diện & trải nghiệm)

@@ -243,13 +243,18 @@ export default function SyncBackup() {
             reauthRequired ? (
               <div className="space-y-4">
                 <div className="flex justify-center">
-                  <div className="bg-brand-500/10 p-4 rounded-full border border-brand-500/20 text-brand-400">
+                  <div className="bg-amber-500/10 p-4 rounded-full border border-amber-500/20 text-amber-400 animate-pulse">
                     <CloudLightning className="w-12 h-12" />
                   </div>
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-200">Đã từng kết nối Google Drive</p>
-                  <p className="text-xs text-slate-500 mt-1">Bấm nút bên dưới để Đăng nhập và Hợp nhất dữ liệu ngay lập tức</p>
+                  <p className="font-bold text-amber-400">Phiên đăng nhập đã hết hạn</p>
+                  <p className="text-xs text-slate-400 mt-1">Bấm nút bên dưới để Đăng nhập lại và Hợp nhất dữ liệu ngay lập tức</p>
+                  {lastSynced && (
+                    <p className="text-[11px] text-slate-500 mt-2 bg-slate-950/40 py-1 px-3 rounded-lg border border-slate-800 inline-block font-medium">
+                      Đồng bộ lần cuối: {formatDateTime(lastSynced)}
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={handleCloudSmartBackup}
