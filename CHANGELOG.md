@@ -2,6 +2,11 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.3.0] - 2026-07-27
+
+### Fixed (Sửa lỗi quan trọng)
+- **Khắc phục triệt để lỗi tự bật popup ngầm & kẹt ứng dụng ở Tab Đồng bộ:** Loại bỏ lệnh tự động gọi `refreshTokenSilently()` (`prompt: 'none'`) khi vừa vào Tab Đồng bộ lúc token 1 giờ đã hết hạn. Chuyển sang thẻ "Phiên đăng nhập đã hết hạn" tức thì (0ms) mà không bật bất kỳ popup ngầm nào, giúp ứng dụng hoạt động 100% mượt mà không bị treo hay giật lag.
+
 ## 🚀 [1.2.9] - 2026-07-26
 
 ### Improved (Cải tiến trải nghiệm đồng bộ)

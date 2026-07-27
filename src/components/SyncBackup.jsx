@@ -12,17 +12,11 @@ export default function SyncBackup() {
   const [lastSynced, setLastSynced] = useState(localStorage.getItem('google_drive_last_synced') || null);
 
   useEffect(() => {
-    // Kích hoạt việc lấy/làm mới token nếu đã từng đăng nhập
+    // Kiểm tra trạng thái kết nối và token trong bộ nhớ
     if (googleDriveService.isConnected()) {
       setIsConnected(true);
       const activeToken = googleDriveService.getAccessToken();
-      if (!activeToken) {
-        googleDriveService.ensureValidToken().then(token => {
-          setReauthRequired(!token);
-        });
-      } else {
-        setReauthRequired(false);
-      }
+      setReauthRequired(!activeToken);
     } else {
       setIsConnected(false);
       setReauthRequired(false);
@@ -67,38 +61,37 @@ export default function SyncBackup() {
 
   // Hàm trợ giúp bọc tác vụ yêu cầu Token, tự động mở popup đăng nhập lại nếu hết hạn
   const executeWithToken = async (actionFn) => {
-    setLoading(true);
-    try {
-      const token = await googleDriveService.ensureValidToken();
-      if (token) {
+    const token = googleDriveService.getAccessToken();
+    if (token) {
+      setLoading(true);
+      try {
         await actionFn();
-      } else {
-        showStatus('Phiên đăng nhập hết hạn, đang mở cửa sổ kết nối lại...', 'info');
-        
-        // Đăng ký sự kiện thành công một lần để chạy lại tác vụ
-        const handleSuccess = async () => {
-          window.removeEventListener('google-drive-login-success', handleSuccess);
-          try {
-            setLoading(true);
-            showStatus('Đang thực hiện tác vụ...', 'info');
-            await actionFn();
-          } catch (err) {
-            console.error(err);
-            showStatus('Thất bại: ' + err.message, 'error');
-          } finally {
-            setLoading(false);
-          }
-        };
-        window.addEventListener('google-drive-login-success', handleSuccess);
-        
-        // Mở popup login
-        googleDriveService.login();
+      } catch (err) {
+        console.error(err);
+        showStatus('Thất bại: ' + err.message, 'error');
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error(err);
-      showStatus('Thất bại: ' + err.message, 'error');
-    } finally {
-      setLoading(false);
+    } else {
+      showStatus('Phiên đăng nhập hết hạn, vui lòng Đăng nhập lại.', 'info');
+      setReauthRequired(true);
+
+      const handleSuccess = async () => {
+        window.removeEventListener('google-drive-login-success', handleSuccess);
+        try {
+          setLoading(true);
+          showStatus('Đang thực hiện tác vụ...', 'info');
+          await actionFn();
+        } catch (err) {
+          console.error(err);
+          showStatus('Thất bại: ' + err.message, 'error');
+        } finally {
+          setLoading(false);
+        }
+      };
+      window.addEventListener('google-drive-login-success', handleSuccess);
+
+      googleDriveService.login();
     }
   };
 

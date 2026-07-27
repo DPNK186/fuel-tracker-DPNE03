@@ -333,19 +333,9 @@ export const googleDriveService = {
     return null;
   },
 
-  // Đảm bảo lấy được Access Token hợp lệ, tự động refresh ngầm nếu đã hết hạn
+  // Đảm bảo lấy được Access Token hợp lệ (trả về null nếu đã hết hạn)
   async ensureValidToken() {
-    const token = this.getAccessToken();
-    if (token) return token;
-
-    // Nếu không có token hợp lệ nhưng cờ logged_in vẫn là true, thử làm mới ngầm
-    if (localStorage.getItem('google_logged_in') === 'true') {
-      const success = await this.refreshTokenSilently();
-      if (success) {
-        return localStorage.getItem('google_access_token');
-      }
-    }
-    return null;
+    return this.getAccessToken();
   },
 
   // Gọi đăng nhập Google hiển thị Popup
