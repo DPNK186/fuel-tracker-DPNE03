@@ -2,6 +2,22 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.3.1] - 2026-09-06
+
+### Added (Tính năng mới & Trải nghiệm)
+- **Cơ sở dữ liệu xe phổ thông & Gợi ý dung tích bình xăng:** Tích hợp sẵn database offline gồm hơn 35 dòng xe máy (Honda, Yamaha, Piaggio/Vespa, Suzuki) và ô tô phổ thông tại Việt Nam kèm dung tích bình xăng chuẩn hãng.
+- **Phân tách biến thể xe Winner / Winner X:** Hỗ trợ nhận diện chính xác cả Honda Winner 150 và Honda Winner X (đều 4.5L) qua tên gọi và từ khóa tìm kiếm (`aliases`).
+- **Gợi ý tự động & Quick Chips 1 chạm:** Hàng nút bấm chọn nhanh các mẫu xe quốc dân (Vision, Air Blade, Lead, SH, Winner X, Exciter, Wave Alpha, Vios...) và dropdown tự động gợi ý khi gõ tên xe (hỗ trợ tiếng Việt có dấu, không dấu, phím `Esc`, tự động đóng khi chuyển ô nhập và nút xóa nhanh nội dung).
+- **Tự động gợi ý đơn giá từ lần đổ gần nhất:** Tự động điền đơn giá từ lần đổ xăng trước của xe & loại nhiên liệu khi mở form thêm mới, giúp người dùng chỉ cần nhập Tổng tiền là tự ra Số lít.
+- **Tính toán 3 chiều linh hoạt khi nhập nhiên liệu:** Hỗ trợ nhập 2 trường bất kỳ trong bộ 3 (Số lít, Đơn giá, Tổng tiền) để tự động tính trường còn lại theo cơ chế ưu tiên: Tổng tiền > Số lít > Đơn giá; 2 trường mới nhập gần nhất luôn được bảo lưu.
+- **Nhập liệu số thập phân an toàn:** Hỗ trợ nhập cả dấu phẩy `,` và dấu chấm `.` (ví dụ `4,5` hoặc `4.5`), giữ nguyên ký tự khi gõ dở không gián đoạn con trỏ chuột.
+- **Chuẩn hóa làm tròn:** Làm tròn số nguyên cho tiền tệ (VND) và 1 chữ số thập phân cho Số lít (`.toFixed(1)`).
+- **Gợi ý trực quan trên Form (UI Hint):** Bổ sung chỉ dẫn trực quan hướng dẫn tính năng tính toán 3 chiều ngay dưới form nhập liệu.
+
+### Fixed (Sửa lỗi)
+- **Khắc phục triệt để lỗi không tự động chuyển sang xe mới tạo:** Giải quyết race condition trong `useEffect` quản lý xe hiện hành của `App.jsx`, đảm bảo ứng dụng lập tức chuyển sang và lưu trữ xe mới tạo làm phương tiện active.
+- **Đồng bộ hiển thị phiên bản:** Cập nhật nhãn phiên bản ứng dụng trong tab Đồng bộ (`SyncBackup.jsx`) và `package.json` lên phiên bản v1.3.1.
+
 ## 🚀 [1.3.0] - 2026-07-27
 
 ### Fixed (Sửa lỗi quan trọng)

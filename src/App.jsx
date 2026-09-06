@@ -18,8 +18,10 @@ import {
   X, 
   RefreshCw,
   Check,
-  AlertCircle
+  AlertCircle,
+  Sparkles
 } from 'lucide-react';
+import { searchVehicles, QUICK_POPULAR_VEHICLES } from './data/popularVehicles';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -69,6 +71,10 @@ export default function App() {
   const [newVehicleType, setNewVehicleType] = useState('Motorcycle');
   const [newVehiclePlate, setNewVehiclePlate] = useState('');
   const [newVehicleTankCapacity, setNewVehicleTankCapacity] = useState('');
+
+  // State quản lý gợi ý phương tiện tự động
+  const [vehicleSuggestions, setVehicleSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Chuỗi ID các xe để tối ưu hóa dependencies cho useEffect (chống render lặp vô hạn)
   const vehicleIdsString = useMemo(() => {
@@ -160,18 +166,27 @@ export default function App() {
     };
   }, []);
 
-  // Thiết lập xe hiện hành mặc định khi tải trang
+  // Thiết lập xe hiện hành mặc định khi tải trang hoặc khi danh sách xe thay đổi
   useEffect(() => {
     if (vehicles && vehicles.length > 0) {
-      const isValid = vehicles.some(v => v.id.toString() === currentVehicleId);
-      if (!currentVehicleId || !isValid) {
+      const storedId = localStorage.getItem('active_vehicle_id');
+      const hasCurrent = currentVehicleId && vehicles.some(v => v.id.toString() === currentVehicleId);
+      const hasStored = storedId && vehicles.some(v => v.id.toString() === storedId);
+
+      if (hasCurrent) {
+        if (storedId !== currentVehicleId) {
+          localStorage.setItem('active_vehicle_id', currentVehicleId);
+        }
+      } else if (hasStored) {
+        setCurrentVehicleId(storedId);
+      } else {
         const defaultId = vehicles[0].id.toString();
         setCurrentVehicleId(defaultId);
         localStorage.setItem('active_vehicle_id', defaultId);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicleIdsString, currentVehicleId]);
+  }, [vehicleIdsString]);
 
   // Kiểm tra trạng thái Standalone & Snooze 7 ngày của PWA Banner
   useEffect(() => {
@@ -244,6 +259,28 @@ export default function App() {
     setNewVehicleType(vehicle.type);
     setNewVehiclePlate(vehicle.plateNumber || '');
     setNewVehicleTankCapacity(vehicle.tankCapacity ? vehicle.tankCapacity.toString() : '');
+    setShowSuggestions(false);
+  };
+
+  // Xử lý khi gõ tên xe để tìm kiếm gợi ý
+  const handleVehicleNameChange = (val) => {
+    setNewVehicleName(val);
+    if (val.trim().length > 0) {
+      const matches = searchVehicles(val);
+      setVehicleSuggestions(matches);
+      setShowSuggestions(matches.length > 0);
+    } else {
+      setVehicleSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  // Xử lý chọn xe từ gợi ý / Quick Chips
+  const handleSelectSuggestedVehicle = (v) => {
+    setNewVehicleName(v.name);
+    setNewVehicleType(v.type);
+    setNewVehicleTankCapacity(v.tankCapacity.toString());
+    setShowSuggestions(false);
   };
 
   const handleAddVehicle = async (e) => {
@@ -401,6 +438,8 @@ export default function App() {
       setNewVehiclePlate('');
       setNewVehicleTankCapacity('');
       setShowVehicleModal(false);
+      setShowSuggestions(false);
+      setVehicleSuggestions([]);
 
       // Bật cờ báo có dữ liệu mới chưa đồng bộ
       localStorage.setItem('google_drive_unsynced_changes', 'true');
@@ -735,15 +774,126 @@ export default function App() {
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider pl-1">
                 {editingVehicleId ? 'Sửa thông tin xe' : 'Thêm phương tiện mới'}
               </p>
+
+              {/* Quick Chips Gợi ý xe phổ biến (chỉ hiện khi thêm mới) */}
+              {!editingVehicleId && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-slate-400 font-medium pl-1 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>Chọn nhanh mẫu xe phổ biến:</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto pb-1">
+                    {QUICK_POPULAR_VEHICLES.map((qv, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleSelectSuggestedVehicle(qv)}
+                        className="text-[10px] font-medium bg-slate-900 hover:bg-brand-500/20 text-slate-300 hover:text-brand-300 border border-slate-800 hover:border-brand-500/40 px-2 py-1 rounded-lg transition active:scale-95 flex items-center gap-1"
+                      >
+                        {qv.type === 'Motorcycle' ? (
+                          <Bike className="w-3 h-3 text-emerald-400" />
+                        ) : (
+                          <Car className="w-3 h-3 text-sky-400" />
+                        )}
+                        <span>{qv.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-col gap-2">
-                <input
-                  type="text"
-                  placeholder="Tên xe (VD: Honda Vision)"
-                  value={newVehicleName}
-                  onChange={(e) => setNewVehicleName(e.target.value)}
-                  className="glass-input text-sm py-2"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Tên xe (VD: Honda Winner X)"
+                    value={newVehicleName}
+                    onChange={(e) => handleVehicleNameChange(e.target.value)}
+                    onFocus={() => {
+                      if (newVehicleName.trim().length > 0) {
+                        const matches = searchVehicles(newVehicleName);
+                        setVehicleSuggestions(matches);
+                        setShowSuggestions(matches.length > 0);
+                      }
+                    }}
+                    onBlur={() => {
+                      // Đóng gợi ý khi rời khỏi ô nhập tên xe
+                      setTimeout(() => setShowSuggestions(false), 200);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setShowSuggestions(false);
+                      }
+                    }}
+                    className="glass-input text-sm py-2 w-full pr-8"
+                    required
+                  />
+
+                  {/* Nút xóa nhanh tên xe nếu đang nhập */}
+                  {newVehicleName && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewVehicleName('');
+                        setShowSuggestions(false);
+                        setVehicleSuggestions([]);
+                      }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-500 hover:text-slate-300 transition"
+                      title="Xóa nội dung"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {/* Dropdown Gợi ý khi gõ */}
+                  {showSuggestions && vehicleSuggestions.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden animate-fade-in divide-y divide-slate-800/80 max-h-48 overflow-y-auto">
+                      <div className="p-2 px-3 bg-slate-950/90 border-b border-slate-800/80 flex items-center justify-between text-[10px] font-semibold text-slate-400">
+                        <span>Gợi ý theo tên xe ({vehicleSuggestions.length}):</span>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setShowSuggestions(false);
+                          }}
+                          className="text-slate-500 hover:text-slate-300 text-[10px] px-1 py-0.5 rounded transition"
+                        >
+                          Đóng ✕
+                        </button>
+                      </div>
+                      {vehicleSuggestions.map((v, idx) => (
+                        <div
+                          key={idx}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSelectSuggestedVehicle(v);
+                          }}
+                          className="p-2.5 hover:bg-slate-800/80 cursor-pointer flex items-center justify-between transition group"
+                        >
+                          <div className="flex items-center gap-2">
+                            {v.type === 'Motorcycle' ? (
+                              <Bike className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                            ) : (
+                              <Car className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                            )}
+                            <div>
+                              <p className="text-xs font-semibold text-slate-200 group-hover:text-brand-400 transition">
+                                {v.name}
+                              </p>
+                              <span className="text-[10px] text-slate-500">
+                                {v.type === 'Motorcycle' ? 'Xe máy' : 'Ô tô'}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                            {v.tankCapacity}L
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   <select
                     value={newVehicleType}
@@ -761,14 +911,22 @@ export default function App() {
                     className="glass-input text-sm py-2"
                   />
                 </div>
-                <input
-                  type="number"
-                  step="0.1"
-                  placeholder="Dung tích bình xăng (Lít - VD: 5.2)"
-                  value={newVehicleTankCapacity}
-                  onChange={(e) => setNewVehicleTankCapacity(e.target.value)}
-                  className="glass-input text-sm py-2 w-full"
-                />
+
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="Dung tích bình xăng (Lít - VD: 4.5)"
+                    value={newVehicleTankCapacity}
+                    onChange={(e) => setNewVehicleTankCapacity(e.target.value)}
+                    className="glass-input text-sm py-2 w-full"
+                  />
+                  {newVehicleTankCapacity && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-500 pointer-events-none">
+                      Lít
+                    </span>
+                  )}
+                </div>
               </div>
               
               <div className="flex flex-col gap-1.5">
@@ -787,6 +945,7 @@ export default function App() {
                       setNewVehicleName('');
                       setNewVehiclePlate('');
                       setNewVehicleTankCapacity('');
+                      setShowSuggestions(false);
                     }}
                     className="w-full bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold py-2 rounded-xl text-sm transition active:scale-95"
                   >

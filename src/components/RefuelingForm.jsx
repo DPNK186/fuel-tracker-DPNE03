@@ -3,6 +3,26 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import { Fuel, Calendar, Compass, Coins, PlusCircle, Trash2, Edit2, TrendingUp, X, AlertTriangle } from 'lucide-react';
 
+// Chuẩn hóa số thập phân: đổi dấu phẩy thành dấu chấm và chỉ cho phép tối đa 1 dấu chấm
+const normalizeDecimal = (str) => {
+  if (typeof str !== 'string') return '';
+  let cleaned = str.replace(',', '.').replace(/[^0-9.]/g, '');
+  const parts = cleaned.split('.');
+  if (parts.length > 2) {
+    cleaned = parts[0] + '.' + parts.slice(1).join('');
+  }
+  return cleaned;
+};
+
+// Chuẩn hóa số nguyên tiền tệ
+const normalizeInteger = (str) => {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[^0-9]/g, '');
+};
+
+// Trọng số ưu tiên mặc định: Tổng tiền > Số lít > Đơn giá
+const FIELD_PRIORITY = { total: 3, liters: 2, price: 1 };
+
 export default function RefuelingForm({ currentVehicleId, expandForm, setExpandForm }) {
   const vehicles = useLiveQuery(() => db.vehicles.toArray());
   const refuelings = useLiveQuery(() => db.refuelings.orderBy('odometer').reverse().toArray());
@@ -21,6 +41,9 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
   // State quản lý cảnh báo nhập liệu thời gian thực
   const [formWarnings, setFormWarnings] = useState([]);
 
+  // Ref theo dõi lịch sử thứ tự các trường người dùng vừa trực tiếp gõ/sửa
+  const editOrderRef = useRef([]);
+
   const dateInputRef = useRef(null);
 
   // Đồng bộ mặc định xe của Form theo xe hiện hành được chọn ngoài Header
@@ -29,6 +52,26 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
       setVehicleId(currentVehicleId);
     }
   }, [currentVehicleId]);
+
+  // Tự động gợi ý đơn giá từ lần đổ gần nhất của xe & loại nhiên liệu khi mở form thêm mới
+  useEffect(() => {
+    if (!editingId && expandForm && vehicleId && refuelings && refuelings.length > 0) {
+      // Chỉ gợi ý nếu người dùng chưa nhập số lít hoặc tổng tiền
+      if (!liters && !totalCost) {
+        const latestMatching = refuelings.find(
+          r => r.vehicleId === parseInt(vehicleId) && r.fuelType === fuelType && r.pricePerLiter > 0
+        ) || refuelings.find(
+          r => r.vehicleId === parseInt(vehicleId) && r.pricePerLiter > 0
+        );
+
+        if (latestMatching && latestMatching.pricePerLiter) {
+          const suggestedPrice = Math.round(latestMatching.pricePerLiter).toString();
+          setPricePerLiter(suggestedPrice);
+          editOrderRef.current = ['price'];
+        }
+      }
+    }
+  }, [editingId, expandForm, vehicleId, fuelType, refuelings]);
 
   // Hàm chuyển YYYY-MM-DD sang DD/MM/YYYY
   const formatDateToDisplay = (dateStr) => {
@@ -149,26 +192,103 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
     }));
   }, [refuelings, currentVehicleId]);
 
-  // Tự động tính toán chi phí khi có thay đổi
-  const handleLitersChange = (val) => {
-    setLiters(val);
-    if (pricePerLiter && val) {
-      setTotalCost((parseFloat(val) * parseFloat(pricePerLiter)).toFixed(0));
+  // Thuật toán tính toán linh hoạt 3 trường: Tổng tiền > Số lít > Đơn giá
+  const recalculateFields = (changedField, newVal) => {
+    // Thu thập giá trị hiện tại của 3 trường (sử dụng newVal cho trường vừa sửa)
+    const currentValues = {
+      liters: changedField === 'liters' ? newVal : liters,
+      price: changedField === 'price' ? newVal : pricePerLiter,
+      total: changedField === 'total' ? newVal : totalCost,
+    };
+
+    const numVal = parseFloat(newVal);
+
+    // Nếu người dùng xóa trống hoặc nhập <= 0 hoặc đang gõ dở chuỗi không phải số
+    if (!newVal || isNaN(numVal) || numVal <= 0) {
+      editOrderRef.current = editOrderRef.current.filter(f => f !== changedField);
+      return;
     }
+
+    // Cập nhật thứ tự thao tác: trường vừa sửa được xếp ở cuối mảng (mới nhất)
+    const newOrder = editOrderRef.current.filter(f => f !== changedField).concat(changedField);
+    editOrderRef.current = newOrder;
+
+    const otherFields = ['liters', 'price', 'total'].filter(f => f !== changedField);
+    const [fieldA, fieldB] = otherFields;
+
+    const valA = parseFloat(currentValues[fieldA]);
+    const valB = parseFloat(currentValues[fieldB]);
+
+    const hasA = !isNaN(valA) && valA > 0;
+    const hasB = !isNaN(valB) && valB > 0;
+
+    let targetToCalc = null;
+
+    if (hasA && !hasB) {
+      // fieldA có giá trị, fieldB chưa có -> tính fieldB
+      targetToCalc = fieldB;
+    } else if (!hasA && hasB) {
+      // fieldB có giá trị, fieldA chưa có -> tính fieldA
+      targetToCalc = fieldA;
+    } else if (hasA && hasB) {
+      // Cả 3 trường đều có dữ liệu -> Xác định trường cũ nhất để tính lại
+      const idxA = editOrderRef.current.indexOf(fieldA);
+      const idxB = editOrderRef.current.indexOf(fieldB);
+
+      if (idxA !== idxB) {
+        // Trường có index thấp hơn (hoặc -1) là trường cũ hơn -> tính lại trường đó
+        targetToCalc = idxA < idxB ? fieldA : fieldB;
+      } else {
+        // Nếu bằng nhau (chưa có trong vết thao tác gần), áp dụng thứ tự ưu tiên:
+        // Tổng tiền (3) > Số lít (2) > Đơn giá (1) -> Trường có trọng số thấp hơn sẽ bị tính lại
+        targetToCalc = (FIELD_PRIORITY[fieldA] || 0) < (FIELD_PRIORITY[fieldB] || 0) ? fieldA : fieldB;
+      }
+    }
+
+    if (!targetToCalc) return;
+
+    // Lấy giá trị số của các trường để tính toán
+    const L = changedField === 'liters' ? numVal : parseFloat(currentValues.liters);
+    const P = changedField === 'price' ? numVal : parseFloat(currentValues.price);
+    const T = changedField === 'total' ? numVal : parseFloat(currentValues.total);
+
+    if (targetToCalc === 'total') {
+      // Tổng tiền = Số lít * Đơn giá (làm tròn số nguyên VND)
+      if (L > 0 && P > 0) {
+        const calcTotal = Math.round(L * P);
+        setTotalCost(calcTotal.toString());
+      }
+    } else if (targetToCalc === 'price') {
+      // Đơn giá = Tổng tiền / Số lít (làm tròn số nguyên VND/L)
+      if (T > 0 && L > 0) {
+        const calcPrice = Math.round(T / L);
+        setPricePerLiter(calcPrice.toString());
+      }
+    } else if (targetToCalc === 'liters') {
+      // Số lít = Tổng tiền / Đơn giá (làm tròn 1 chữ số thập phân)
+      if (T > 0 && P > 0) {
+        const calcLiters = parseFloat((T / P).toFixed(1));
+        setLiters(calcLiters.toString());
+      }
+    }
+  };
+
+  const handleLitersChange = (val) => {
+    const cleaned = normalizeDecimal(val);
+    setLiters(cleaned);
+    recalculateFields('liters', cleaned);
   };
 
   const handlePriceChange = (val) => {
-    setPricePerLiter(val);
-    if (liters && val) {
-      setTotalCost((parseFloat(liters) * parseFloat(val)).toFixed(0));
-    }
+    const cleaned = normalizeInteger(val);
+    setPricePerLiter(cleaned);
+    recalculateFields('price', cleaned);
   };
 
   const handleTotalCostChange = (val) => {
-    setTotalCost(val);
-    if (liters && val) {
-      setPricePerLiter((parseFloat(val) / parseFloat(liters)).toFixed(0));
-    }
+    const cleaned = normalizeInteger(val);
+    setTotalCost(cleaned);
+    recalculateFields('total', cleaned);
   };
 
   const handleSubmit = async (e) => {
@@ -215,6 +335,7 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
       setNotes('');
       setDate(new Date().toISOString().split('T')[0]);
       setExpandForm(false);
+      editOrderRef.current = [];
 
       // Đặt cờ báo có dữ liệu mới chưa đồng bộ
       localStorage.setItem('google_drive_unsynced_changes', 'true');
@@ -230,12 +351,14 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
     setDate(log.date);
     setOdometer(log.odometer.toString());
     setLiters(log.liters.toString());
-    setPricePerLiter(log.pricePerLiter.toString());
+    setPricePerLiter(log.pricePerLiter ? log.pricePerLiter.toString() : '');
     setTotalCost(log.totalCost.toString());
     setFuelType(log.fuelType || 'E10 Ron 95');
     setFullTank(log.fullTank !== false);
     setNotes(log.notes || '');
     setExpandForm(true);
+    // Ưu tiên mặc định khi sửa: Tổng tiền (3) > Số lít (2) > Đơn giá (1)
+    editOrderRef.current = ['price', 'liters', 'total'];
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -262,6 +385,7 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
               onClick={() => {
                 setExpandForm(false);
                 setEditingId(null);
+                editOrderRef.current = [];
               }}
               className="p-1.5 hover:bg-slate-900 rounded-lg text-slate-400 hover:text-slate-200 transition"
               title="Đóng form"
@@ -329,11 +453,11 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
             {/* Hàng 3: Số lít & Đơn giá */}
             <div className="grid grid-cols-2 gap-4">
               <div className="flex flex-col">
-                <label className="text-xs text-slate-400 font-medium mb-1 pl-1">Số lít xăng *</label>
+                <label className="text-xs text-slate-400 font-medium mb-1 pl-1">Số lít xăng (L) *</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Lượng xăng (lít)"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Ví dụ: 4.5"
                   value={liters}
                   onChange={(e) => handleLitersChange(e.target.value)}
                   className="glass-input w-full text-left"
@@ -344,7 +468,8 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
               <div className="flex flex-col">
                 <label className="text-xs text-slate-400 font-medium mb-1 pl-1">Đơn giá (đ/L)</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   placeholder="Ví dụ: 23500"
                   value={pricePerLiter}
                   onChange={(e) => handlePriceChange(e.target.value)}
@@ -373,8 +498,9 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
                 <div className="relative">
                   <Coins className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 z-10 pointer-events-none" />
                   <input
-                    type="number"
-                    placeholder="Tổng tiền"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="Ví dụ: 100000"
                     value={totalCost}
                     onChange={(e) => handleTotalCostChange(e.target.value)}
                     className="glass-input !pl-9 w-full text-left"
@@ -383,6 +509,12 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
                 </div>
               </div>
             </div>
+
+            {/* Dòng gợi ý trực quan tính năng tự động tính toán linh hoạt */}
+            <p className="text-[11px] text-brand-400/90 bg-brand-500/5 border border-brand-500/10 rounded-xl px-3 py-2 flex items-center gap-1.5 animate-fade-in">
+              <span className="text-amber-400">💡</span>
+              <span>Mẹo: Nhập 2 trường bất kỳ, hệ thống sẽ tự động tính trường còn lại.</span>
+            </p>
 
             {/* Checkbox Đầy bình */}
             <div className="flex items-center gap-2 pl-1 py-1">
