@@ -6,7 +6,7 @@ import RefuelingForm from './components/RefuelingForm';
 import ExpenseForm from './components/ExpenseForm';
 import SyncBackup from './components/SyncBackup';
 import { useRegisterSW } from 'virtual:pwa-register/react'; // Import hook đăng ký SW chủ động
-import { googleDriveService, importToDB, normalizePlate } from './services/googleDrive';
+import { googleDriveService, importToDB, normalizePlate, trackDeletedVehicle } from './services/googleDrive';
 import { 
   LayoutDashboard, 
   Fuel, 
@@ -295,7 +295,8 @@ export default function App() {
       name: newVehicleName,
       type: newVehicleType,
       plateNumber: newVehiclePlate,
-      tankCapacity: newVehicleTankCapacity ? parseFloat(newVehicleTankCapacity) : null
+      tankCapacity: newVehicleTankCapacity ? parseFloat(newVehicleTankCapacity) : null,
+      updatedAt: new Date().toISOString()
     };
 
     try {
@@ -765,8 +766,10 @@ export default function App() {
                               await db.vehicles.delete(v.id);
                               await db.refuelings.where('vehicleId').equals(v.id).delete();
                               await db.expenses.where('vehicleId').equals(v.id).delete();
-                              // Kích hoạt auto backup ngầm sau khi xóa xe
-                              googleDriveService.autoBackup();
+                              // Ghi nhận lưu vết xe đã xóa để đối soát khi đồng bộ Cloud
+                              trackDeletedVehicle(v);
+                              localStorage.setItem('google_drive_unsynced_changes', 'true');
+                              window.dispatchEvent(new CustomEvent('unsynced-changes-updated'));
                             }
                           }}
                           className="text-[10px] text-rose-500 hover:text-rose-400 font-bold px-2 py-1.5 hover:bg-rose-950/20 rounded-lg transition active:scale-95"
@@ -1082,8 +1085,27 @@ export default function App() {
                 type="button"
                 onClick={async () => {
                   setConflictData(null);
-                  // Thực hiện ép ghi đè local lên đám mây
-                  googleDriveService.autoBackup(true);
+                  try {
+                    const localVehicles = await db.vehicles.toArray();
+                    const localRefuelings = await db.refuelings.toArray();
+                    const localExpenses = await db.expenses.toArray();
+                    const payload = {
+                      version: 1,
+                      timestamp: new Date().toISOString(),
+                      vehicles: localVehicles,
+                      refuelings: localRefuelings,
+                      expenses: localExpenses
+                    };
+                    await googleDriveService.backup(payload);
+                    const syncTime = payload.timestamp;
+                    localStorage.setItem('google_drive_last_synced', syncTime);
+                    localStorage.setItem('google_drive_last_synced_cloud_timestamp', syncTime);
+                    localStorage.removeItem('google_drive_unsynced_changes');
+                    window.dispatchEvent(new CustomEvent('google-drive-sync-success', { detail: syncTime }));
+                    alert('Đã ghi đè dữ liệu thiết bị lên đám mây thành công!');
+                  } catch (err) {
+                    alert('Lỗi ghi đè: ' + err.message);
+                  }
                 }}
                 className="w-full bg-slate-900/80 border border-slate-800 hover:border-amber-500/30 p-3.5 rounded-2xl text-left transition duration-200 group active:scale-98"
               >

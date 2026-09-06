@@ -25,6 +25,13 @@ export async function importToDB(data) {
     throw new Error('Định dạng dữ liệu không hợp lệ hoặc thiếu thông tin phiên bản.');
   }
 
+  // Tương thích ngược: Đảm bảo các phương tiện đều có updatedAt khi nhập vào máy
+  const nowIso = new Date().toISOString();
+  const sanitizedVehicles = data.vehicles.map(v => ({
+    ...v,
+    updatedAt: v.updatedAt || nowIso
+  }));
+
   // 2. Thực hiện xóa và thêm mới trong một Transaction để đảm bảo tính nguyên tử
   await db.transaction('rw', db.vehicles, db.refuelings, db.expenses, async () => {
     // Xóa song song dữ liệu cũ (Tối ưu hóa hiệu năng)
@@ -36,7 +43,7 @@ export async function importToDB(data) {
 
     // Thêm song song dữ liệu mới (Tối ưu hóa hiệu năng)
     await Promise.all([
-      db.vehicles.bulkAdd(data.vehicles),
+      db.vehicles.bulkAdd(sanitizedVehicles),
       db.refuelings.bulkAdd(data.refuelings),
       db.expenses.bulkAdd(data.expenses)
     ]);
@@ -65,6 +72,68 @@ export async function isLocalDBEmptyOrSample() {
 export function normalizePlate(plate) {
   if (!plate) return '';
   return plate.toString().trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+export const DELETED_VEHICLES_KEY = 'fuel_tracker_deleted_vehicles';
+
+// Lấy danh sách các xe đã bị xóa tại thiết bị
+export function getDeletedVehicles() {
+  try {
+    const raw = localStorage.getItem(DELETED_VEHICLES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Lưu vết một xe vừa bị xóa tại thiết bị
+export function trackDeletedVehicle(vehicle) {
+  if (!vehicle) return;
+  try {
+    const list = getDeletedVehicles();
+    const normPlate = normalizePlate(vehicle.plateNumber);
+    // Loại bỏ mục cũ nếu có để cập nhật mốc thời gian deletedAt mới nhất
+    const filtered = list.filter(item => {
+      const matchId = (vehicle.id && (item.id === vehicle.id || item.id?.toString() === vehicle.id?.toString()));
+      const matchPlate = (normPlate && normalizePlate(item.plateNumber) === normPlate);
+      return !matchId && !matchPlate;
+    });
+
+    filtered.push({
+      id: vehicle.id,
+      name: vehicle.name || 'Phương tiện không tên',
+      plateNumber: vehicle.plateNumber || '',
+      type: vehicle.type || 'Motorcycle',
+      tankCapacity: vehicle.tankCapacity || null,
+      deletedAt: new Date().toISOString()
+    });
+
+    localStorage.setItem(DELETED_VEHICLES_KEY, JSON.stringify(filtered));
+  } catch (e) {
+    console.error('Lỗi lưu vết xe đã xóa:', e);
+  }
+}
+
+// Dọn dẹp một xe khỏi danh sách theo dõi xe đã xóa (sau khi đã xóa trên Cloud hoặc khôi phục về máy)
+export function removeDeletedVehicle(identifier) {
+  if (!identifier) return;
+  try {
+    let list = getDeletedVehicles();
+    const normInput = typeof identifier === 'string' ? normalizePlate(identifier) : '';
+    list = list.filter(item => {
+      if (item.id === identifier || item.id?.toString() === identifier?.toString()) return false;
+      if (normInput && normalizePlate(item.plateNumber) === normInput) return false;
+      return true;
+    });
+    localStorage.setItem(DELETED_VEHICLES_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.error('Lỗi dọn dẹp xe đã xóa:', e);
+  }
+}
+
+// Xóa sạch danh sách theo dõi xe đã xóa
+export function clearDeletedVehicles() {
+  localStorage.removeItem(DELETED_VEHICLES_KEY);
 }
 
 // Hợp nhất danh sách xe từ Local và Cloud (Tự động gộp các xe có cùng biển số xe)
@@ -97,13 +166,18 @@ function mergeVehicles(localList = [], cloudList = []) {
       vehicleIdRemap.set(vId.toString(), canonicalId);
       if (!isNaN(Number(vId))) vehicleIdRemap.set(Number(vId), canonicalId);
 
+      const bestUpdatedAt = [canonicalVehicle.updatedAt, v.updatedAt]
+        .filter(Boolean)
+        .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] || null;
+
       const mergedObj = {
         ...canonicalVehicle,
         ...v,
         id: canonicalId,
         name: canonicalVehicle.name || v.name,
         plateNumber: canonicalVehicle.plateNumber || v.plateNumber,
-        tankCapacity: canonicalVehicle.tankCapacity || v.tankCapacity
+        tankCapacity: canonicalVehicle.tankCapacity || v.tankCapacity,
+        updatedAt: bestUpdatedAt
       };
       mergedVehiclesMap.set(canonicalId, mergedObj);
     } else {
@@ -534,66 +608,387 @@ export const googleDriveService = {
     }
     
     return await downloadResponse.json();
-  },
-
-  // Đồng bộ & Hợp nhất dữ liệu thông minh theo yêu cầu (On-Demand Smart Backup & Merge)
-  async smartBackupAndMerge() {
-    const token = await this.ensureValidToken();
-    if (!token) throw new Error('Chưa đăng nhập Google');
-
-    window.dispatchEvent(new CustomEvent('google-drive-sync-start'));
-
-    try {
-      // 1. Tải bản sao lưu hiện tại trên Cloud về (nếu có)
-      let cloudData = null;
-      try {
-        cloudData = await this.restore();
-      } catch (e) {
-        console.log('Chưa có file backup trên Cloud hoặc lỗi tải:', e.message);
-      }
-
-      // 2. Thu thập dữ liệu Local hiện tại từ Dexie DB
-      const localVehicles = await db.vehicles.toArray();
-      const localRefuelings = await db.refuelings.toArray();
-      const localExpenses = await db.expenses.toArray();
-
-      // 3. Thực hiện Hợp nhất dữ liệu thông minh (Smart Merge)
-      const { vehicles: mergedVehicles, vehicleIdRemap } = mergeVehicles(localVehicles, cloudData?.vehicles || []);
-      const mergedRefuelings = mergeRefuelings(localRefuelings, cloudData?.refuelings || [], vehicleIdRemap);
-      const mergedExpenses = mergeExpenses(localExpenses, cloudData?.expenses || [], vehicleIdRemap);
-
-      const mergedPayload = {
-        version: 1,
-        timestamp: new Date().toISOString(),
-        vehicles: mergedVehicles,
-        refuelings: mergedRefuelings,
-        expenses: mergedExpenses
-      };
-
-      // 4. Cập nhật dữ liệu đã hợp nhất cho Local Dexie DB
-      await importToDB(mergedPayload);
-
-      // 5. Lưu dữ liệu đã hợp nhất lên Google Drive AppData
-      await this.backup(mergedPayload);
-
-      const syncTime = mergedPayload.timestamp;
-      localStorage.setItem('google_drive_last_synced', syncTime);
-      localStorage.setItem('google_drive_last_synced_cloud_timestamp', syncTime);
-      localStorage.setItem('google_drive_unsynced_changes', 'false');
-
-      window.dispatchEvent(new CustomEvent('google-drive-sync-success', { detail: syncTime }));
-
-      return {
-        vehiclesCount: mergedVehicles.length,
-        refuelingsCount: mergedRefuelings.length,
-        expensesCount: mergedExpenses.length,
-        timestamp: syncTime
-      };
-    } catch (err) {
-      console.error('Smart backup error:', err);
-      window.dispatchEvent(new CustomEvent('google-drive-sync-error', { detail: err.message }));
-      throw err;
-    }
   }
 };
+
+// Định dạng giờ an toàn không bao giờ throw hoặc sinh ra "Invalid Date"
+export function formatSafeTime(dateVal, fallback = 'Không rõ giờ') {
+  if (!dateVal) return fallback;
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return fallback;
+  return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+}
+
+// Định dạng ngày giờ an toàn
+export function formatSafeDateTime(dateVal, fallback = 'Không rõ thời gian') {
+  if (!dateVal) return fallback;
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return fallback;
+  return d.toLocaleString('vi-VN');
+}
+
+// Tìm mốc thời gian bản ghi gần nhất (dành cho dữ liệu cũ không có timestamp/updatedAt)
+export function getLatestRecordDate(records = [], vehicleId = null) {
+  let latestTime = 0;
+  let latestDateStr = '';
+  
+  if (!Array.isArray(records)) return { latestTime: 0, latestDateStr: '' };
+
+  records.forEach(r => {
+    if (!r) return;
+    if (vehicleId && r.vehicleId?.toString() !== vehicleId?.toString()) return;
+    
+    if (r.updatedAt) {
+      const t = new Date(r.updatedAt).getTime();
+      if (!isNaN(t) && t > latestTime) {
+        latestTime = t;
+        latestDateStr = r.updatedAt;
+      }
+    }
+    if (r.date) {
+      const t = new Date(r.date + 'T23:59:59').getTime();
+      if (!isNaN(t) && t > latestTime) {
+        latestTime = t;
+        latestDateStr = r.date;
+      }
+    }
+  });
+
+  return { latestTime, latestDateStr };
+}
+
+// Ước tính mốc thời gian gần nhất của một gói dữ liệu backup (nếu data.timestamp bị thiếu)
+export function getEstimatedBackupTimestamp(data) {
+  if (!data) return 0;
+  if (data.timestamp) {
+    const t = new Date(data.timestamp).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  const refuelLatest = getLatestRecordDate(data.refuelings);
+  const expenseLatest = getLatestRecordDate(data.expenses);
+  return Math.max(refuelLatest.latestTime, expenseLatest.latestTime);
+}
+
+// Đối chiếu chênh lệch danh sách phương tiện 2 chiều giữa Local và Cloud kèm gợi ý thông minh
+export function inspectSyncDiscrepancies(cloudData, localVehicles = [], localRefuelings = [], localExpenses = []) {
+  if (!cloudData || !Array.isArray(cloudData.vehicles)) {
+    return [];
+  }
+
+  const cloudVehicles = cloudData.vehicles;
+  const explicitCloudTime = cloudData.timestamp ? new Date(cloudData.timestamp).getTime() : 0;
+  const estimatedCloudTime = (explicitCloudTime && !isNaN(explicitCloudTime)) ? explicitCloudTime : getEstimatedBackupTimestamp(cloudData);
+  const cloudTimestamp = estimatedCloudTime;
+  const hasExplicitCloudTimestamp = !!(explicitCloudTime && !isNaN(explicitCloudTime) && explicitCloudTime > 0);
+
+  const deletedVehicles = getDeletedVehicles();
+  const hasEverSynced = !!localStorage.getItem('google_drive_last_synced');
+
+  const discrepancies = [];
+
+  // 1. Kiểm tra Chiều A: Xe có trên Cloud nhưng KHÔNG có ở Local (Missing on Local)
+  cloudVehicles.forEach(cv => {
+    if (!cv) return;
+    const normCloudPlate = normalizePlate(cv.plateNumber);
+    const existsLocally = localVehicles.some(lv => {
+      const normLocalPlate = normalizePlate(lv.plateNumber);
+      return (normCloudPlate && normLocalPlate === normCloudPlate) ||
+             (lv.id && cv.id && lv.id.toString() === cv.id.toString());
+    });
+
+    if (!existsLocally) {
+      // Tìm xem xe này có trong danh sách vừa xóa tại Local không
+      const deletedRecord = deletedVehicles.find(dv => {
+        const normDelPlate = normalizePlate(dv.plateNumber);
+        return (normCloudPlate && normDelPlate === normCloudPlate) ||
+               (dv.id && cv.id && dv.id.toString() === cv.id.toString());
+      });
+
+      const cloudRefuelings = (cloudData.refuelings || []).filter(r => r.vehicleId?.toString() === cv.id?.toString());
+      const cloudExpenses = (cloudData.expenses || []).filter(e => e.vehicleId?.toString() === cv.id?.toString());
+      const cloudRefuelingCount = cloudRefuelings.length;
+      const cloudExpenseCount = cloudExpenses.length;
+
+      let suggestedAction = 'restore_local';
+      let suggestedReason = 'Xe có trên Cloud nhưng chưa có tại máy này.';
+      let timeDiffText = '';
+
+      if (deletedRecord) {
+        const deletedTime = deletedRecord.deletedAt ? new Date(deletedRecord.deletedAt).getTime() : 0;
+        
+        if (deletedTime && cloudTimestamp && !isNaN(deletedTime)) {
+          if (deletedTime >= cloudTimestamp) {
+            suggestedAction = 'delete_cloud';
+            const cloudTimeStr = hasExplicitCloudTimestamp ? formatSafeTime(cloudData.timestamp) : 'mốc Cloud';
+            suggestedReason = `Bạn vừa xóa xe này trên máy (${formatSafeTime(deletedRecord.deletedAt)}) sau ${cloudTimeStr}.`;
+            timeDiffText = `Đã xóa trên máy lúc ${formatSafeDateTime(deletedRecord.deletedAt)}`;
+          } else {
+            suggestedAction = 'restore_local';
+            const cloudTimeStr = hasExplicitCloudTimestamp ? formatSafeDateTime(cloudData.timestamp) : 'mới hơn';
+            suggestedReason = `Bản sao lưu trên Cloud (${cloudTimeStr}) có cập nhật mới hơn mốc bạn xóa xe.`;
+            timeDiffText = hasExplicitCloudTimestamp 
+              ? `Cloud cập nhật lúc ${formatSafeDateTime(cloudData.timestamp)}`
+              : 'Cloud có cập nhật mới hơn';
+          }
+        } else {
+          // Trường hợp dữ liệu cũ: xe đã xóa trên máy nhưng thiếu mốc giờ so sánh
+          // Quyết định an toàn: người dùng đã chủ động xóa trên máy này -> Gợi ý xóa trên Cloud
+          suggestedAction = 'delete_cloud';
+          suggestedReason = 'Xe đã từng bị xóa trên máy này trước đó (bản ghi cũ). Gợi ý xóa đồng bộ khỏi Cloud.';
+          timeDiffText = deletedRecord.deletedAt 
+            ? `Đã xóa trên máy lúc ${formatSafeDateTime(deletedRecord.deletedAt)}` 
+            : 'Đã xóa trên thiết bị này (trước v1.3.3)';
+        }
+      } else {
+        // Xe có trên Cloud, chưa từng bị xóa tại máy này
+        suggestedAction = 'restore_local';
+        suggestedReason = 'Xe có trên Cloud nhưng chưa có tại thiết bị này. Gợi ý tải về để bảo toàn dữ liệu.';
+        if (hasExplicitCloudTimestamp) {
+          timeDiffText = `Lưu trên Cloud lúc ${formatSafeDateTime(cloudData.timestamp)}`;
+        } else {
+          const { latestDateStr } = getLatestRecordDate([...cloudRefuelings, ...cloudExpenses]);
+          timeDiffText = latestDateStr 
+            ? `Dữ liệu Cloud cũ (Gần nhất: ${latestDateStr})` 
+            : 'Dữ liệu có sẵn trên Cloud (phiên bản cũ)';
+        }
+      }
+
+      discrepancies.push({
+        id: cv.id,
+        name: cv.name,
+        plateNumber: cv.plateNumber,
+        type: cv.type || 'Motorcycle',
+        tankCapacity: cv.tankCapacity,
+        direction: 'cloud_only', // Có trên Cloud, thiếu ở Local
+        cloudRefuelingCount,
+        cloudExpenseCount,
+        localRefuelingCount: 0,
+        localExpenseCount: 0,
+        wasDeletedLocally: !!deletedRecord,
+        deletedAt: deletedRecord?.deletedAt || null,
+        cloudTimestamp: cloudData.timestamp || null,
+        timeDiffText,
+        suggestedAction,
+        suggestedReason,
+        selectedAction: suggestedAction
+      });
+    }
+  });
+
+  // 2. Kiểm tra Chiều B: Xe có ở Local nhưng KHÔNG có trên Cloud (Missing on Cloud)
+  if (cloudVehicles.length > 0 || cloudData.timestamp) {
+    localVehicles.forEach(lv => {
+      if (!lv) return;
+      const normLocalPlate = normalizePlate(lv.plateNumber);
+      const existsOnCloud = cloudVehicles.some(cv => {
+        const normCloudPlate = normalizePlate(cv.plateNumber);
+        return (normLocalPlate && normCloudPlate === normLocalPlate) ||
+               (lv.id && cv.id && lv.id.toString() === cv.id.toString());
+      });
+
+      if (!existsOnCloud) {
+        const matchingRefuelings = localRefuelings.filter(r => r.vehicleId?.toString() === lv.id?.toString());
+        const matchingExpenses = localExpenses.filter(e => e.vehicleId?.toString() === lv.id?.toString());
+        const localRefuelingCount = matchingRefuelings.length;
+        const localExpenseCount = matchingExpenses.length;
+
+        const localTime = lv.updatedAt ? new Date(lv.updatedAt).getTime() : 0;
+        const hasLocalUpdatedAt = !!(lv.updatedAt && !isNaN(localTime) && localTime > 0);
+
+        let suggestedAction = 'upload_cloud';
+        let suggestedReason = 'Xe trên thiết bị chưa có trên Cloud.';
+        let timeDiffText = '';
+
+        if (hasLocalUpdatedAt) {
+          // Xe có timestamp cụ thể
+          if (hasEverSynced && cloudTimestamp && localTime < cloudTimestamp) {
+            // Thiết bị này đã từng sync, xe được tạo trước mốc Cloud mới nhất -> Đã bị xóa trên Cloud từ máy khác
+            suggestedAction = 'delete_local';
+            const cloudTimeStr = hasExplicitCloudTimestamp ? formatSafeTime(cloudData.timestamp) : 'mới hơn';
+            suggestedReason = `Xe đã bị xóa khỏi Cloud từ thiết bị khác (${cloudTimeStr}).`;
+            timeDiffText = hasExplicitCloudTimestamp 
+              ? `Cloud cập nhật mới hơn (${formatSafeDateTime(cloudData.timestamp)})` 
+              : 'Cloud có cập nhật mới hơn';
+          } else {
+            suggestedAction = 'upload_cloud';
+            suggestedReason = `Xe được tạo/cập nhật trên máy lúc ${formatSafeTime(lv.updatedAt)} (mới hơn Cloud).`;
+            timeDiffText = `Tạo/sửa trên máy lúc ${formatSafeDateTime(lv.updatedAt)}`;
+          }
+        } else {
+          // DỮ LIỆU CŨ: Xe trên máy tạo từ các phiên bản trước (chưa có trường updatedAt)
+          // NGUYÊN TẮC BẢO TOÀN DỮ LIỆU: Tuyệt đối KHÔNG tự động gợi ý delete_local với data cũ!
+          suggestedAction = 'upload_cloud';
+          const { latestDateStr } = getLatestRecordDate([...matchingRefuelings, ...matchingExpenses]);
+          suggestedReason = 'Dữ liệu xe sẵn có trên thiết bị (phiên bản trước chưa có tem giờ). Gợi ý giữ lại và tải lên Cloud.';
+          timeDiffText = latestDateStr 
+            ? `Dữ liệu trên máy (Gần nhất: ${latestDateStr})` 
+            : 'Dữ liệu trên thiết bị hiện tại (trước v1.3.3)';
+        }
+
+        discrepancies.push({
+          id: lv.id,
+          name: lv.name,
+          plateNumber: lv.plateNumber,
+          type: lv.type || 'Motorcycle',
+          tankCapacity: lv.tankCapacity,
+          direction: 'local_only', // Có ở Local, thiếu trên Cloud
+          cloudRefuelingCount: 0,
+          cloudExpenseCount: 0,
+          localRefuelingCount,
+          localExpenseCount,
+          wasDeletedLocally: false,
+          deletedAt: null,
+          localUpdatedAt: lv.updatedAt || null,
+          cloudTimestamp: cloudData.timestamp || null,
+          timeDiffText,
+          suggestedAction,
+          suggestedReason,
+          selectedAction: suggestedAction
+        });
+      }
+    });
+  }
+
+  return discrepancies;
+}
+
+// Thực thi hợp nhất dữ liệu thông minh theo các quyết định đối soát của người dùng
+export async function executeSmartMergeWithDecisions(cloudData, localData, decisions = []) {
+  let workingCloudData = cloudData ? JSON.parse(JSON.stringify(cloudData)) : { version: 1, timestamp: new Date().toISOString(), vehicles: [], refuelings: [], expenses: [] };
+  let workingLocalVehicles = [...localData.vehicles];
+  let workingLocalRefuelings = [...localData.refuelings];
+  let workingLocalExpenses = [...localData.expenses];
+
+  decisions.forEach(d => {
+    const normPlate = normalizePlate(d.plateNumber);
+    const matchesVehicle = (v) => {
+      if (!v) return false;
+      if (d.id && v.id && v.id.toString() === d.id.toString()) return true;
+      if (normPlate && normalizePlate(v.plateNumber) === normPlate) return true;
+      return false;
+    };
+
+    if (d.selectedAction === 'delete_cloud') {
+      // 1. Tìm các xe trên Cloud khớp để lấy ID
+      const matchedCloudVehicles = (workingCloudData.vehicles || []).filter(matchesVehicle);
+      const matchedCloudIds = new Set(matchedCloudVehicles.map(v => v.id?.toString()));
+
+      // Loại bỏ xe khỏi Cloud
+      workingCloudData.vehicles = (workingCloudData.vehicles || []).filter(v => !matchesVehicle(v));
+      // Loại bỏ refuelings và expenses tương ứng khỏi Cloud
+      workingCloudData.refuelings = (workingCloudData.refuelings || []).filter(r => !matchedCloudIds.has(r.vehicleId?.toString()));
+      workingCloudData.expenses = (workingCloudData.expenses || []).filter(e => !matchedCloudIds.has(e.vehicleId?.toString()));
+
+      // Dọn dẹp khỏi danh sách theo dõi xe đã xóa
+      removeDeletedVehicle(d.id || d.plateNumber);
+    } 
+    else if (d.selectedAction === 'restore_local') {
+      // Giữ lại trên Cloud để merge vào Local, dọn dẹp khỏi danh sách xe đã xóa
+      removeDeletedVehicle(d.id || d.plateNumber);
+    }
+    else if (d.selectedAction === 'delete_local') {
+      // 2. Tìm các xe trên Local khớp để loại bỏ khỏi Local merge
+      const matchedLocalVehicles = workingLocalVehicles.filter(matchesVehicle);
+      const matchedLocalIds = new Set(matchedLocalVehicles.map(v => v.id?.toString()));
+
+      workingLocalVehicles = workingLocalVehicles.filter(v => !matchesVehicle(v));
+      workingLocalRefuelings = workingLocalRefuelings.filter(r => !matchedLocalIds.has(r.vehicleId?.toString()));
+      workingLocalExpenses = workingLocalExpenses.filter(e => !matchedLocalIds.has(e.vehicleId?.toString()));
+
+      removeDeletedVehicle(d.id || d.plateNumber);
+    }
+    else if (d.selectedAction === 'upload_cloud') {
+      // Xe local sẽ được merge lên Cloud bình thường
+      removeDeletedVehicle(d.id || d.plateNumber);
+    }
+  });
+
+  // Hợp nhất dữ liệu sau khi đã xử lý các quyết định
+  const { vehicles: mergedVehicles, vehicleIdRemap } = mergeVehicles(workingLocalVehicles, workingCloudData.vehicles || []);
+  const mergedRefuelings = mergeRefuelings(workingLocalRefuelings, workingCloudData.refuelings || [], vehicleIdRemap);
+  const mergedExpenses = mergeExpenses(workingLocalExpenses, workingCloudData.expenses || [], vehicleIdRemap);
+
+  const nowIso = new Date().toISOString();
+  const mergedPayload = {
+    version: 1,
+    timestamp: nowIso,
+    vehicles: mergedVehicles.map(v => ({
+      ...v,
+      updatedAt: v.updatedAt || nowIso
+    })),
+    refuelings: mergedRefuelings,
+    expenses: mergedExpenses
+  };
+
+  // Cập nhật Local Dexie DB
+  await importToDB(mergedPayload);
+
+  // Đẩy lên Google Drive AppData
+  await googleDriveService.backup(mergedPayload);
+
+  const syncTime = mergedPayload.timestamp;
+  localStorage.setItem('google_drive_last_synced', syncTime);
+  localStorage.setItem('google_drive_last_synced_cloud_timestamp', syncTime);
+  localStorage.removeItem('google_drive_unsynced_changes');
+
+  window.dispatchEvent(new CustomEvent('google-drive-sync-success', { detail: syncTime }));
+  window.dispatchEvent(new CustomEvent('unsynced-changes-updated'));
+
+  return {
+    vehiclesCount: mergedVehicles.length,
+    refuelingsCount: mergedRefuelings.length,
+    expensesCount: mergedExpenses.length,
+    timestamp: syncTime
+  };
+}
+
+// Thêm các phương thức khảo sát và thực thi vào googleDriveService
+googleDriveService.inspectDiscrepancies = async function() {
+  const token = await this.ensureValidToken();
+  if (!token) throw new Error('Chưa đăng nhập Google');
+
+  let cloudData = null;
+  try {
+    cloudData = await this.restore();
+  } catch (e) {
+    console.log('Chưa có file backup trên Cloud hoặc lỗi tải:', e.message);
+  }
+
+  const localVehicles = await db.vehicles.toArray();
+  const localRefuelings = await db.refuelings.toArray();
+  const localExpenses = await db.expenses.toArray();
+
+  const discrepancies = inspectSyncDiscrepancies(cloudData, localVehicles, localRefuelings, localExpenses);
+
+  return {
+    cloudData,
+    localData: {
+      vehicles: localVehicles,
+      refuelings: localRefuelings,
+      expenses: localExpenses
+    },
+    discrepancies
+  };
+};
+
+googleDriveService.executeMergeWithDecisions = async function(cloudData, localData, decisions = []) {
+  const token = await this.ensureValidToken();
+  if (!token) throw new Error('Chưa đăng nhập Google');
+
+  window.dispatchEvent(new CustomEvent('google-drive-sync-start'));
+
+  try {
+    return await executeSmartMergeWithDecisions(cloudData, localData, decisions);
+  } catch (err) {
+    console.error('Smart backup error:', err);
+    window.dispatchEvent(new CustomEvent('google-drive-sync-error', { detail: err.message }));
+    throw err;
+  }
+};
+
+googleDriveService.smartBackupAndMerge = async function() {
+  const check = await this.inspectDiscrepancies();
+  return await this.executeMergeWithDecisions(check.cloudData, check.localData, []);
+};
+
 

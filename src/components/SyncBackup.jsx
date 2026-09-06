@@ -1,7 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { googleDriveService, importToDB } from '../services/googleDrive';
+import { googleDriveService, importToDB, normalizePlate } from '../services/googleDrive';
 import { db } from '../db/db';
-import { Cloud, CloudLightning, RefreshCw, LogIn, LogOut, Download, Upload, ShieldAlert, CheckCircle, Info } from 'lucide-react';
+import { 
+  Cloud, 
+  CloudLightning, 
+  RefreshCw, 
+  LogIn, 
+  LogOut, 
+  Download, 
+  Upload, 
+  ShieldAlert, 
+  CheckCircle, 
+  Info,
+  AlertTriangle,
+  Sparkles,
+  Trash2,
+  Car,
+  Bike,
+  X
+} from 'lucide-react';
 
 export default function SyncBackup() {
   const [isConnected, setIsConnected] = useState(false);
@@ -10,6 +27,11 @@ export default function SyncBackup() {
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('info'); // info, success, error
   const [lastSynced, setLastSynced] = useState(localStorage.getItem('google_drive_last_synced') || null);
+
+  // State quản lý Modal Đối Soát Phương Tiện 2 Chiều
+  const [showDiscrepancyModal, setShowDiscrepancyModal] = useState(false);
+  const [pendingSyncData, setPendingSyncData] = useState(null); // { cloudData, localData, discrepancies }
+  const [discrepancyDecisions, setDiscrepancyDecisions] = useState({}); // { [vehicleKey]: 'delete_cloud' | 'restore_local' | 'delete_local' | 'upload_cloud' }
 
   useEffect(() => {
     // Kiểm tra trạng thái kết nối và token trong bộ nhớ
@@ -127,29 +149,124 @@ export default function SyncBackup() {
     };
   };
 
-  // Sao lưu và Hợp nhất thông minh lên Google Drive
+  // Sao lưu và Hợp nhất thông minh lên Google Drive (có đối soát chênh lệch 2 chiều)
   const handleCloudSmartBackup = () => {
     executeWithToken(async () => {
-      showStatus('Đang đối chiếu và hợp nhất dữ liệu với Google Drive...', 'info');
-      const result = await googleDriveService.smartBackupAndMerge();
+      showStatus('Đang đối chiếu dữ liệu với Google Drive...', 'info');
+      const checkResult = await googleDriveService.inspectDiscrepancies();
+
+      if (checkResult.discrepancies && checkResult.discrepancies.length > 0) {
+        setPendingSyncData(checkResult);
+        const initialDecisions = {};
+        checkResult.discrepancies.forEach(d => {
+          const key = d.id?.toString() || normalizePlate(d.plateNumber) || d.name;
+          initialDecisions[key] = d.suggestedAction;
+        });
+        setDiscrepancyDecisions(initialDecisions);
+        setShowDiscrepancyModal(true);
+        setStatusMessage('');
+        return;
+      }
+
+      showStatus('Đang hợp nhất và sao lưu...', 'info');
+      const result = await googleDriveService.executeMergeWithDecisions(checkResult.cloudData, checkResult.localData, []);
       const syncTime = result.timestamp;
       setLastSynced(syncTime);
       showStatus(`Đã hợp nhất & sao lưu thành công! (${result.vehiclesCount} xe, ${result.refuelingsCount} lần đổ xăng, ${result.expensesCount} chi phí)`, 'success');
     });
   };
 
-  // Phục hồi từ Google Drive
+  // Phục hồi từ Google Drive (có đối soát chênh lệch 2 chiều)
   const handleCloudRestore = () => {
     if (!confirm('Hành động này sẽ tải lại bản sao lưu từ Google Drive và hợp nhất với dữ liệu thiết bị của bạn. Tiếp tục?')) {
       return;
     }
 
     executeWithToken(async () => {
-      showStatus('Đang tải và hợp nhất dữ liệu từ Google Drive...', 'info');
-      const result = await googleDriveService.smartBackupAndMerge();
+      showStatus('Đang tải và đối chiếu dữ liệu từ Google Drive...', 'info');
+      const checkResult = await googleDriveService.inspectDiscrepancies();
+
+      if (checkResult.discrepancies && checkResult.discrepancies.length > 0) {
+        setPendingSyncData(checkResult);
+        const initialDecisions = {};
+        checkResult.discrepancies.forEach(d => {
+          const key = d.id?.toString() || normalizePlate(d.plateNumber) || d.name;
+          initialDecisions[key] = d.suggestedAction;
+        });
+        setDiscrepancyDecisions(initialDecisions);
+        setShowDiscrepancyModal(true);
+        setStatusMessage('');
+        return;
+      }
+
+      showStatus('Đang hợp nhất dữ liệu...', 'info');
+      const result = await googleDriveService.executeMergeWithDecisions(checkResult.cloudData, checkResult.localData, []);
       setLastSynced(result.timestamp);
       showStatus('Khôi phục & hợp nhất dữ liệu thành công! Ứng dụng đã cập nhật.', 'success');
     });
+  };
+
+  // Xác nhận thực thi hợp nhất theo các lựa chọn trong Modal Đối Soát
+  const handleConfirmReconciliation = () => {
+    if (!pendingSyncData) return;
+    executeWithToken(async () => {
+      setShowDiscrepancyModal(false);
+      showStatus('Đang thực hiện đồng bộ theo lựa chọn của bạn...', 'info');
+
+      const formattedDecisions = pendingSyncData.discrepancies.map(d => {
+        const key = d.id?.toString() || normalizePlate(d.plateNumber) || d.name;
+        return {
+          id: d.id,
+          plateNumber: d.plateNumber,
+          direction: d.direction,
+          selectedAction: discrepancyDecisions[key] || d.suggestedAction
+        };
+      });
+
+      const result = await googleDriveService.executeMergeWithDecisions(
+        pendingSyncData.cloudData,
+        pendingSyncData.localData,
+        formattedDecisions
+      );
+
+      const syncTime = result.timestamp;
+      setLastSynced(syncTime);
+      setPendingSyncData(null);
+      showStatus(`Đã đồng bộ hoàn tất! (${result.vehiclesCount} xe, ${result.refuelingsCount} lần đổ xăng, ${result.expensesCount} chi phí)`, 'success');
+    });
+  };
+
+  // Thao tác nhanh: Áp dụng toàn bộ gợi ý thông minh
+  const handleApplyAllSuggestions = () => {
+    if (!pendingSyncData) return;
+    const newDecisions = {};
+    pendingSyncData.discrepancies.forEach(d => {
+      const key = d.id?.toString() || normalizePlate(d.plateNumber) || d.name;
+      newDecisions[key] = d.suggestedAction;
+    });
+    setDiscrepancyDecisions(newDecisions);
+  };
+
+  // Thao tác nhanh: Giữ lại tất cả xe (Khôi phục Cloud về Local & Tải Local lên Cloud)
+  const handleKeepAllVehicles = () => {
+    if (!pendingSyncData) return;
+    const newDecisions = {};
+    pendingSyncData.discrepancies.forEach(d => {
+      const key = d.id?.toString() || normalizePlate(d.plateNumber) || d.name;
+      newDecisions[key] = d.direction === 'cloud_only' ? 'restore_local' : 'upload_cloud';
+    });
+    setDiscrepancyDecisions(newDecisions);
+  };
+
+  // Thao tác nhanh: Đồng bộ theo thiết bị này (Chỉ giữ xe đang có ở máy)
+  const handleSyncToThisDevice = () => {
+    if (!pendingSyncData) return;
+    const newDecisions = {};
+    pendingSyncData.discrepancies.forEach(d => {
+      const key = d.id?.toString() || normalizePlate(d.plateNumber) || d.name;
+      newDecisions[key] = d.direction === 'cloud_only' ? 'delete_cloud' : 'upload_cloud';
+    });
+    setDiscrepancyDecisions(newDecisions);
   };
 
   // Export dữ liệu ra file JSON cục bộ (Offline Backup)
@@ -220,8 +337,8 @@ export default function SyncBackup() {
 
         {statusMessage && (
           <div className={`p-4 rounded-xl mb-4 flex items-center gap-3 text-sm animate-fade-in ${statusType === 'success' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' :
-              statusType === 'error' ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400' :
-                'bg-sky-500/10 border border-sky-500/20 text-sky-400'
+            statusType === 'error' ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400' :
+              'bg-sky-500/10 border border-sky-500/20 text-sky-400'
             }`}>
             {statusType === 'success' && <CheckCircle className="w-5 h-5 flex-shrink-0" />}
             {statusType === 'error' && <ShieldAlert className="w-5 h-5 flex-shrink-0" />}
@@ -384,18 +501,219 @@ export default function SyncBackup() {
         <div className="flex items-center gap-3 text-xs">
           <div>
             <span className="text-slate-500">Phiên bản: </span>
-            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.3.2</span>
+            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.3.3</span>
           </div>
           <div className="h-3 w-[1px] bg-slate-800"></div>
           <div>
             <span className="text-slate-500">Cập nhật: </span>
-            <span className="text-slate-300 font-medium">06/09/2026 13:12</span>
+            <span className="text-slate-300 font-medium">07/09/2026 02:24</span>
           </div>
         </div>
         <div className="text-[10px] text-slate-500 font-semibold pt-2 border-t border-slate-800/60 w-full mt-1">
           Build by ĐPNE03
         </div>
       </div>
+
+      {/* Modal Đối Soát Chênh Lệch Phương Tiện 2 Chiều */}
+      {showDiscrepancyModal && pendingSyncData && (
+        <div className="fixed inset-0 z-[110] bg-black/85 backdrop-blur-sm flex items-start sm:items-center justify-center p-3 sm:p-4 overflow-y-auto pt-6 sm:pt-4">
+          <div className="glass-card rounded-3xl w-full max-w-lg p-5 sm:p-6 space-y-4 animate-fade-in border-amber-500/30 shadow-2xl my-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2.5 text-amber-400">
+                <AlertTriangle className="w-5 h-5 flex-shrink-0 animate-pulse" />
+                <h3 className="text-base font-bold text-slate-100">Đối chiếu chênh lệch phương tiện</h3>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => {
+                  setShowDiscrepancyModal(false);
+                  setPendingSyncData(null);
+                }}
+                className="text-slate-400 hover:text-slate-200 p-1 rounded-lg hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Explanation */}
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Phát hiện <span className="font-bold text-amber-400">{pendingSyncData.discrepancies.length}</span> phương tiện có sự khác biệt giữa thiết bị này và bản sao lưu Google Drive. Hệ thống đã phân tích mốc thời gian cập nhật để đưa ra gợi ý xử lý tối ưu:
+            </p>
+
+            {/* Bulk Action Buttons */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              <button
+                type="button"
+                onClick={handleApplyAllSuggestions}
+                className="text-[11px] font-semibold bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2.5 py-1.5 rounded-xl transition active:scale-95 flex items-center gap-1"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Áp dụng gợi ý
+              </button>
+              <button
+                type="button"
+                onClick={handleKeepAllVehicles}
+                className="text-[11px] font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 px-2.5 py-1.5 rounded-xl transition active:scale-95 flex items-center gap-1"
+              >
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
+                Giữ lại tất cả xe
+              </button>
+              <button
+                type="button"
+                onClick={handleSyncToThisDevice}
+                className="text-[11px] font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 px-2.5 py-1.5 rounded-xl transition active:scale-95 flex items-center gap-1"
+              >
+                Đồng bộ theo máy này
+              </button>
+            </div>
+
+            {/* Discrepant Vehicles List */}
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+              {pendingSyncData.discrepancies.map((d, idx) => {
+                const key = d.id?.toString() || normalizePlate(d.plateNumber) || d.name;
+                const currentAction = discrepancyDecisions[key] || d.suggestedAction;
+
+                return (
+                  <div key={idx} className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 space-y-2.5">
+                    {/* Vehicle Header Info */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        {d.type === 'Motorcycle' ? (
+                          <Bike className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                        ) : (
+                          <Car className="w-4 h-4 text-sky-400 flex-shrink-0" />
+                        )}
+                        <div>
+                          <p className="text-sm font-bold text-slate-200">{d.name}</p>
+                          <p className="text-[10px] text-slate-400">
+                            Biển số: <span className="text-slate-300 font-medium">{d.plateNumber || 'Chưa có'}</span>
+                            {d.tankCapacity && ` • ${d.tankCapacity}L`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Direction Tag */}
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md border flex-shrink-0 ${
+                        d.direction === 'cloud_only'
+                          ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
+                          : 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                      }`}>
+                        {d.direction === 'cloud_only' ? 'Có trên Cloud • Thiếu ở máy' : 'Có trên máy • Thiếu trên Cloud'}
+                      </span>
+                    </div>
+
+                    {/* Time & Count subtext */}
+                    <div className="text-[10px] text-slate-400 flex items-center justify-between border-t border-slate-800/60 pt-1.5">
+                      <span>{d.timeDiffText}</span>
+                      <span className="text-slate-300 font-medium">
+                        {d.direction === 'cloud_only' 
+                          ? `${d.cloudRefuelingCount} đổ xăng, ${d.cloudExpenseCount} chi phí`
+                          : `${d.localRefuelingCount} đổ xăng, ${d.localExpenseCount} chi phí`}
+                      </span>
+                    </div>
+
+                    {/* Auto Recommendation Box */}
+                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-2 text-xs flex items-start gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-amber-300">
+                          Gợi ý: {
+                            d.suggestedAction === 'delete_cloud' ? 'Nên xóa trên Cloud' :
+                            d.suggestedAction === 'restore_local' ? 'Nên khôi phục về máy' :
+                            d.suggestedAction === 'delete_local' ? 'Nên xóa trên máy' : 'Nên tải lên Cloud'
+                          }
+                        </span>
+                        <p className="text-[11px] text-slate-300 mt-0.5">{d.suggestedReason}</p>
+                      </div>
+                    </div>
+
+                    {/* Decision Selector Buttons */}
+                    <div className="grid grid-cols-2 gap-2 pt-0.5">
+                      {d.direction === 'cloud_only' ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setDiscrepancyDecisions(prev => ({ ...prev, [key]: 'delete_cloud' }))}
+                            className={`p-2 rounded-xl text-left border text-xs transition active:scale-95 flex items-center gap-2 ${
+                              currentAction === 'delete_cloud'
+                                ? 'bg-rose-500/20 border-rose-500/60 text-rose-300 font-bold'
+                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 flex-shrink-0 text-rose-400" />
+                            <span>Xóa trên Cloud</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDiscrepancyDecisions(prev => ({ ...prev, [key]: 'restore_local' }))}
+                            className={`p-2 rounded-xl text-left border text-xs transition active:scale-95 flex items-center gap-2 ${
+                              currentAction === 'restore_local'
+                                ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 font-bold'
+                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <Download className="w-3.5 h-3.5 flex-shrink-0 text-emerald-400" />
+                            <span>Khôi phục về máy</span>
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setDiscrepancyDecisions(prev => ({ ...prev, [key]: 'delete_local' }))}
+                            className={`p-2 rounded-xl text-left border text-xs transition active:scale-95 flex items-center gap-2 ${
+                              currentAction === 'delete_local'
+                                ? 'bg-rose-500/20 border-rose-500/60 text-rose-300 font-bold'
+                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5 flex-shrink-0 text-rose-400" />
+                            <span>Xóa trên máy</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDiscrepancyDecisions(prev => ({ ...prev, [key]: 'upload_cloud' }))}
+                            className={`p-2 rounded-xl text-left border text-xs transition active:scale-95 flex items-center gap-2 ${
+                              currentAction === 'upload_cloud'
+                                ? 'bg-emerald-500/20 border-emerald-500/60 text-emerald-300 font-bold'
+                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <Upload className="w-3.5 h-3.5 flex-shrink-0 text-emerald-400" />
+                            <span>Tải lên Cloud</span>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="flex flex-col gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={handleConfirmReconciliation}
+                className="w-full bg-gradient-to-r from-brand-500 to-emerald-600 hover:from-brand-600 hover:to-emerald-700 text-white font-bold py-3 rounded-xl text-sm transition active:scale-95 shadow-lg shadow-brand-500/20"
+              >
+                Xác nhận & Tiến hành Đồng bộ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDiscrepancyModal(false);
+                  setPendingSyncData(null);
+                }}
+                className="w-full bg-slate-800 hover:bg-slate-750 text-slate-300 font-semibold py-2 rounded-xl text-xs transition active:scale-95"
+              >
+                Hủy bỏ (Giữ nguyên hiện trạng)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
