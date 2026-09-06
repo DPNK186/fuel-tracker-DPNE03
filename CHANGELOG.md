@@ -2,6 +2,32 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.3.2] - 2026-09-06
+
+### Added (Tính năng mới & Trải nghiệm)
+- **Mở rộng toàn diện Database 147 phương tiện phổ thông tại Việt Nam:**
+  - **Xe máy phổ thông (58 mẫu):** 
+    - *Honda:* Winner X, Winner 150, Vision, Air Blade 125/160, Lead 125, SH 125i/150i/160i, SH Mode, SH 350i/300i, Wave Alpha, Wave RSX, Future 125 Fi, Blade 110, Dream / Super Dream, Super Cub / Cub 50 / Cub 125, Vario 125/160, Click 110/125/160, Scoopy, PCX, ADV 150/160, Spacy 125, CBR150R, CB150R / CB300R.
+    - *Yamaha:* PG-1, Exciter 155/150/135, Grande, Janus, NVX 155, Sirius / Sirius Fi, Jupiter / Finn, Latte, FreeGo, Nouvo 1-6/SX/LX, Acruzo, Mio / Classico / Mio M3, YZF-R15, MT-15, FZ150i / TFX 150, XS155R.
+    - *Piaggio & Vespa:* Vespa Sprint 125/150, Primavera 125, GTS 125/150/300, Vespa LX 125/150, Liberty 125, Medley 125/150, Zip 100, Fly 125.
+    - *Suzuki & SYM:* Raider R150 / Satria F150, Hayate 125, Impulse 125, Burgman Street, Viva 110 / Viva Fi, Axelo 125, GSX-R150 / Bandit, SYM Attila / Elizabeth, SYM 50cc (Elegant/Shark), SYM Star SR 125/170.
+  - **Ô tô các phân khúc phổ thông & bán chạy (89 mẫu):**
+    - *CUV / Mini-SUV / B/C-SUV:* Mitsubishi Xforce, Outlander, Mazda CX-5, CX-3, CX-30, Toyota Yaris Cross, Corolla Cross, Raize, Hyundai Creta, Venue, Tucson, Kia Seltos, Sonet, Sportage, Ford Territory, EcoSport, Honda CR-V, HR-V, Subaru Forester, Nissan Kicks e-Power, X-Trail, Peugeot 2008, Peugeot 3008/5008, Suzuki Jimny.
+    - *D-SUV & E-SUV 7 chỗ cỡ lớn:* Mitsubishi Pajero Sport (68L), Mitsubishi Pajero (88L), Ford Everest (80L), Ford Explorer (70L), Hyundai Santa Fe (67L), Hyundai Palisade (71L), Toyota Fortuner (80L), Toyota Land Cruiser Prado (87L), Toyota Land Cruiser LC200/LC300 (110L), Mazda CX-8 (72L), Kia Sorento (67L), Isuzu mu-X (80L), Nissan Terra (78L), VinFast Lux SA2.0 (85L).
+    - *MPV 7 - 16 chỗ:* Mitsubishi Xpander / Xpander Cross, Toyota Veloz Cross, Avanza Premio, Innova Cross / Innova, Honda BR-V, Hyundai Stargazer, Hyundai Custin, Kia Carnival / Sedona, Kia Carens, Suzuki XL7 / Hybrid, Suzuki Ertiga / Hybrid, Ford Transit 16 chỗ (80L), Hyundai Solati 16 chỗ (75L).
+    - *Bán tải & Tải nhẹ:* Ford Ranger / Raptor, Mitsubishi Triton, Toyota Hilux, Isuzu D-Max, Nissan Navara, Mazda BT-50, Suzuki Super Carry / Carry Pro / Blind Van tải cóc.
+    - *Sedan & Hatchback:* Toyota Vios, Wigo, Yaris, Corolla Altis, Camry, Hyundai Accent, Grand i10, Elantra, Honda City, Brio, Civic, Accord, Mazda 2, Mazda 3, Mazda 6, Kia Morning, Soluto, K3 / Cerato, K5 / Optima, Mitsubishi Attrage, Suzuki Swift, Ciaz, Nissan Almera / Sunny, VinFast Fadil, VinFast Lux A2.0.
+    - *Xe sang thông dụng tại VN:* Mercedes-Benz C-Class (C200/C300), E-Class (E200/E300), GLC (GLC 200/300), BMW 3 Series (320i/330i), BMW 5 Series (520i/530i), Lexus RX (RX350/RX300/RX500h).
+- **Tối ưu hóa tìm kiếm phương tiện:** Khử dấu tiếng Việt chuẩn xác, hỗ trợ tra cứu tên mở rộng, tìm kiếm theo các từ khóa viết tắt (`pg1`, `pg-1`, `pajero`, `ex`, `ab`, `cbr`, `r15`, `cx5`, `xpander`, `ranger`...). Xử lý từ khóa ngắn (<= 2 ký tự) theo ranh giới từ để loại bỏ hoàn toàn các kết quả khớp sai (như tìm `sh` không còn dính `mitsubishi`).
+
+### Improved (Cải tiến giao diện & Trải nghiệm Mobile)
+- **Tách Modal Thêm/Sửa xe chuyên biệt tối ưu Mobile UX:**
+  - **Modal 1 (Danh sách xe):** Gọn gàng, chỉ hiển thị danh sách các xe hiện có, chuyển xe active, sửa/xóa và nút bấm to nổi bật `+ Thêm phương tiện mới`.
+  - **Modal 2 (Thêm/Sửa xe độc lập):** Mở riêng biệt căn trên màn hình (`items-start pt-6`), khi bàn phím ảo của smartphone bật lên không che khuất ô nhập và danh sách gợi ý.
+  - Tích hợp nút quay lại `←` ở góc trên để trở về danh sách xe thuận tiện.
+  - Tự động điền đồng bộ Tên, Loại xe và Dung tích bình xăng khi chọn từ gợi ý/Quick chips, người dùng vẫn có thể linh hoạt tùy chỉnh lại số lít.
+  - Tự động chuyển và kích hoạt ngay phương tiện vừa tạo.
+
 ## 🚀 [1.3.1] - 2026-09-06
 
 ### Added (Tính năng mới & Trải nghiệm)

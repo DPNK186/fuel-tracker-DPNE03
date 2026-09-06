@@ -143,7 +143,7 @@ export default function SyncBackup() {
     if (!confirm('Hành động này sẽ tải lại bản sao lưu từ Google Drive và hợp nhất với dữ liệu thiết bị của bạn. Tiếp tục?')) {
       return;
     }
-    
+
     executeWithToken(async () => {
       showStatus('Đang tải và hợp nhất dữ liệu từ Google Drive...', 'info');
       const result = await googleDriveService.smartBackupAndMerge();
@@ -219,11 +219,10 @@ export default function SyncBackup() {
         </h2>
 
         {statusMessage && (
-          <div className={`p-4 rounded-xl mb-4 flex items-center gap-3 text-sm animate-fade-in ${
-            statusType === 'success' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' :
-            statusType === 'error' ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400' :
-            'bg-sky-500/10 border border-sky-500/20 text-sky-400'
-          }`}>
+          <div className={`p-4 rounded-xl mb-4 flex items-center gap-3 text-sm animate-fade-in ${statusType === 'success' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' :
+              statusType === 'error' ? 'bg-rose-500/10 border border-rose-500/20 text-rose-400' :
+                'bg-sky-500/10 border border-sky-500/20 text-sky-400'
+            }`}>
             {statusType === 'success' && <CheckCircle className="w-5 h-5 flex-shrink-0" />}
             {statusType === 'error' && <ShieldAlert className="w-5 h-5 flex-shrink-0" />}
             {statusType === 'info' && <RefreshCw className="w-5 h-5 animate-spin flex-shrink-0" />}
@@ -342,7 +341,7 @@ export default function SyncBackup() {
           <Download className="text-brand-500 w-6 h-6" />
           Sao lưu thủ công (Offline)
         </h2>
-        
+
         <p className="text-xs text-slate-400 mb-6">
           Bạn có thể xuất toàn bộ dữ liệu ra một file `.json` để lưu trữ thủ công hoặc import ngược lại vào ứng dụng mà không cần tài khoản mạng.
         </p>
@@ -385,7 +384,7 @@ export default function SyncBackup() {
         <div className="flex items-center gap-3 text-xs">
           <div>
             <span className="text-slate-500">Phiên bản: </span>
-            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.3.1</span>
+            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.3.2</span>
           </div>
           <div className="h-3 w-[1px] bg-slate-800"></div>
           <div>
