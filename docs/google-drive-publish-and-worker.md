@@ -76,3 +76,20 @@ Google OAuth yêu cầu `Client Secret` để đổi lấy `refresh_token`. Vì 
    ```
 3. Mở ứng dụng → vào tab **Sao lưu** → nếu trước đó đã kết nối theo kiểu cũ, bấm **Đăng xuất / Hủy kết nối** rồi bấm **Đăng nhập & Sao lưu ngay** lại 1 lần duy nhất.
 4. Từ giờ trở đi, trạng thái sẽ hiển thị **Gia hạn tự động (Worker)** — mỗi khi token hết hạn 1 giờ, app tự gọi Worker gia hạn ngầm trong tích tắc mà **không bao giờ hiện popup đăng nhập lại**.
+
+---
+
+## Phần 3: Nhật ký Cấu hình & Quản lý Secret đang dùng (để Disable / Rotate khi cần)
+
+| Hạng mục | Thông tin nhận diện |
+| :--- | :--- |
+| **Cloudflare Worker URL** | `https://fuel-tracker-dpne03.dpn-e103a.workers.dev` |
+| **Google OAuth Client Secret** | `****PS--` *(chỉ lưu 4 ký tự cuối để nhận diện, không lưu giá trị thật)* |
+| **Ngày tạo (Creation date)** | `November 24, 2026, 8:02:59 PM GMT+7` |
+| **Trạng thái (Status)** | `Enabled` |
+
+### Cách Disable / Thu hồi khi không còn sử dụng:
+1. Vào **Google Cloud Console → APIs & Services → Credentials** → chọn OAuth 2.0 Client ID của app.
+2. Trong bảng **Client secrets**, tìm dòng có hậu tố `****PS--` (tạo lúc `Nov 24, 2026, 8:02:59 PM GMT+7`) → bấm **Disable** (hoặc biểu tượng thùng rác **Delete**).
+3. Nếu muốn ngưng hẳn Worker, vào **Cloudflare Dashboard → Workers & Pages → `fuel-tracker-dpne03` → Settings** để xóa Secret `GOOGLE_CLIENT_SECRET` hoặc xóa Worker.
+
