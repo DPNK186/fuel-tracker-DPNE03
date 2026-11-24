@@ -1,6 +1,7 @@
 import { db } from '../db/db';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '425147321997-ojjgks40prnbj1npse9c7o4jqjms4gp9.apps.googleusercontent.com';
+const OAUTH_WORKER_URL = (import.meta.env.VITE_OAUTH_WORKER_URL || '').trim().replace(/\/+$/, '');
 const SCOPES = 'https://www.googleapis.com/auth/drive.appdata';
 
 // Hàm trợ giúp đọc thông tin lỗi an toàn
@@ -313,11 +314,39 @@ export const googleDriveService = {
   // Timer duy trì token ngầm
   proactiveRefreshTimer: null,
 
-  // Google GIS Token Client
+  // Google GIS Token Client (Fallback khi chưa cấu hình Cloudflare Worker)
   tokenClient: null,
+
+  // Google GIS Code Client (Dùng khi đã cấu hình Cloudflare Worker để giữ Refresh Token vĩnh viễn)
+  codeClient: null,
 
   // Các Promise resolve khi nhận callback từ GIS
   pendingResolvers: [],
+
+  // Kiểm tra xem app có đang bật chế độ gia hạn tự động qua Cloudflare Worker không
+  isWorkerAuthEnabled() {
+    return Boolean(OAUTH_WORKER_URL);
+  },
+
+  // Kiểm tra xem đã lưu refresh_token để tự gia hạn ngầm chưa
+  hasRefreshToken() {
+    return Boolean(localStorage.getItem('google_refresh_token'));
+  },
+
+  // Lưu thông tin token nhận được và đặt lịch tự gia hạn ngầm
+  saveTokenSession(accessToken, expiresIn, refreshToken = null) {
+    const ttlSeconds = parseInt(expiresIn, 10) || 3600;
+    const expiresAt = Date.now() + ttlSeconds * 1000;
+
+    localStorage.setItem('google_access_token', accessToken);
+    localStorage.setItem('google_token_expires_at', expiresAt.toString());
+    localStorage.setItem('google_logged_in', 'true');
+    if (refreshToken) {
+      localStorage.setItem('google_refresh_token', refreshToken);
+    }
+
+    this.scheduleProactiveRefresh(ttlSeconds);
+  },
 
   // Chờ thư viện Google SDK sẵn sàng (tối đa timeoutMs)
   waitForGoogleSDK(timeoutMs = 5000) {
@@ -340,7 +369,7 @@ export const googleDriveService = {
     });
   },
 
-  // Khởi tạo Google Token Client
+  // Khởi tạo Google Token Client (GIS Token Model)
   initTokenClient() {
     if (this.tokenClient) return this.tokenClient;
     if (!window.google?.accounts?.oauth2) return null;
@@ -351,23 +380,12 @@ export const googleDriveService = {
       callback: (tokenResponse) => {
         const isError = !!tokenResponse.error;
         if (!isError) {
-          const accessToken = tokenResponse.access_token;
-          const expiresIn = tokenResponse.expires_in; // thời gian sống (giây)
-          const expiresAt = new Date().getTime() + parseInt(expiresIn) * 1000;
-
-          localStorage.setItem('google_access_token', accessToken);
-          localStorage.setItem('google_token_expires_at', expiresAt.toString());
-          localStorage.setItem('google_logged_in', 'true');
-
-          // Lên lịch gia hạn tự động ngầm trước khi token hết hạn
-          this.scheduleProactiveRefresh(parseInt(expiresIn));
-
+          this.saveTokenSession(tokenResponse.access_token, tokenResponse.expires_in);
           window.dispatchEvent(new CustomEvent('google-drive-login-success'));
         } else {
           console.error('Google OAuth Callback Error:', tokenResponse.error);
         }
 
-        // Gọi tất cả resolver đang chờ nhận kết quả
         const resolvers = [...this.pendingResolvers];
         this.pendingResolvers = [];
         resolvers.forEach(resolve => resolve(!isError));
@@ -375,6 +393,81 @@ export const googleDriveService = {
     });
 
     return this.tokenClient;
+  },
+
+  // Khởi tạo Google Code Client (GIS Code Model + Cloudflare Worker để giữ Refresh Token)
+  initCodeClient() {
+    if (this.codeClient) return this.codeClient;
+    if (!window.google?.accounts?.oauth2 || !OAUTH_WORKER_URL) return null;
+
+    this.codeClient = window.google.accounts.oauth2.initCodeClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      ux_mode: 'popup',
+      access_type: 'offline',
+      prompt: 'consent',
+      callback: async (codeResponse) => {
+        if (codeResponse.error || !codeResponse.code) {
+          console.error('Google OAuth Code Error:', codeResponse.error);
+          return;
+        }
+
+        try {
+          const res = await fetch(`${OAUTH_WORKER_URL}/exchange`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code: codeResponse.code,
+              redirect_uri: 'postmessage'
+            })
+          });
+
+          const data = await res.json();
+          if (!res.ok || !data.access_token) {
+            throw new Error(data.error || 'Không thể đổi mã xác thực từ Cloudflare Worker');
+          }
+
+          this.saveTokenSession(data.access_token, data.expires_in, data.refresh_token);
+          window.dispatchEvent(new CustomEvent('google-drive-login-success'));
+        } catch (err) {
+          console.error('Cloudflare Worker token exchange failed:', err);
+          alert('Đăng nhập Google qua Worker thất bại: ' + err.message);
+        }
+      }
+    });
+
+    return this.codeClient;
+  },
+
+  // Gia hạn access_token hoàn toàn ngầm thông qua Cloudflare Worker + Refresh Token
+  async refreshTokenViaWorker() {
+    if (!OAUTH_WORKER_URL) return false;
+    const refreshToken = localStorage.getItem('google_refresh_token');
+    if (!refreshToken) return false;
+
+    try {
+      const res = await fetch(`${OAUTH_WORKER_URL}/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.access_token) {
+        if (data.code === 'invalid_grant') {
+          // Refresh token đã bị thu hồi hoặc hết hạn (chế độ Testing > 7 ngày)
+          localStorage.removeItem('google_refresh_token');
+        }
+        return false;
+      }
+
+      this.saveTokenSession(data.access_token, data.expires_in);
+      window.dispatchEvent(new CustomEvent('google-drive-login-success'));
+      return true;
+    } catch (err) {
+      console.error('Worker silent refresh failed:', err);
+      return false;
+    }
   },
 
   // Đặt lịch làm mới token ngầm trước khi token hết hạn 15 phút (hoặc tối thiểu 30 giây)
@@ -394,22 +487,32 @@ export const googleDriveService = {
     }, refreshDelayMs);
   },
 
-  // Lấy Access Token từ localStorage (chỉ trả về nếu còn hạn)
+  // Lấy Access Token từ localStorage (chỉ trả về nếu còn hạn tối thiểu 60 giây)
   getAccessToken() {
     const token = localStorage.getItem('google_access_token');
     const expiresAt = localStorage.getItem('google_token_expires_at');
 
     if (token && expiresAt) {
-      if (new Date().getTime() < parseInt(expiresAt)) {
+      if (Date.now() + 60000 < parseInt(expiresAt, 10)) {
         return token;
       }
     }
     return null;
   },
 
-  // Đảm bảo lấy được Access Token hợp lệ (trả về null nếu đã hết hạn)
+  // Đảm bảo lấy được Access Token hợp lệ (tự động thử gia hạn ngầm trước khi trả về null)
   async ensureValidToken() {
-    return this.getAccessToken();
+    const existing = this.getAccessToken();
+    if (existing) return existing;
+
+    if (this.isConnected()) {
+      const refreshed = await this.refreshTokenSilently();
+      if (refreshed) {
+        return this.getAccessToken();
+      }
+    }
+
+    return null;
   },
 
   // Gọi đăng nhập Google hiển thị Popup
@@ -425,14 +528,28 @@ export const googleDriveService = {
       return;
     }
 
+    if (this.isWorkerAuthEnabled()) {
+      const codeClient = this.initCodeClient();
+      if (codeClient) {
+        codeClient.requestCode();
+        return;
+      }
+    }
+
     const client = this.initTokenClient();
     if (client) {
-      client.requestAccessToken();
+      // prompt: '' giúp Google bỏ qua màn hình chọn tài khoản/xác nhận quyền nếu trình duyệt đã nhớ phiên
+      client.requestAccessToken({ prompt: '' });
     }
   },
 
-  // Làm mới token ngầm không hiện popup
+  // Làm mới token ngầm không hiện popup (ưu tiên Cloudflare Worker, fallback GIS prompt: 'none')
   async refreshTokenSilently() {
+    if (this.isWorkerAuthEnabled() && this.hasRefreshToken()) {
+      const ok = await this.refreshTokenViaWorker();
+      if (ok) return true;
+    }
+
     const sdkReady = await this.waitForGoogleSDK(5000);
     if (!sdkReady) {
       return false;
@@ -440,13 +557,28 @@ export const googleDriveService = {
 
     return new Promise((resolve) => {
       const client = this.initTokenClient();
-      if (client) {
-        this.pendingResolvers.push(resolve);
-        // Sử dụng prompt: 'none' chuẩn Google GIS để đảm bảo 100% không bao giờ tự ý bật popup màn hình
-        client.requestAccessToken({ prompt: 'none' });
-      } else {
+      if (!client) {
         resolve(false);
+        return;
       }
+
+      let settled = false;
+      const done = (result) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          resolve(result);
+        }
+      };
+
+      // Timeout an toàn 4 giây tránh treo nếu trình duyệt chặn third-party cookie
+      const timeoutId = setTimeout(() => {
+        this.pendingResolvers = this.pendingResolvers.filter(r => r !== done);
+        done(false);
+      }, 4000);
+
+      this.pendingResolvers.push(done);
+      client.requestAccessToken({ prompt: 'none' });
     });
   },
 
@@ -457,6 +589,7 @@ export const googleDriveService = {
     }
     localStorage.removeItem('google_access_token');
     localStorage.removeItem('google_token_expires_at');
+    localStorage.removeItem('google_refresh_token');
     localStorage.removeItem('google_logged_in');
     localStorage.removeItem('google_drive_last_synced');
     localStorage.removeItem('google_drive_last_synced_cloud_timestamp');

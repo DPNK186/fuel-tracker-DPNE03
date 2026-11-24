@@ -23,6 +23,7 @@ import {
 export default function SyncBackup() {
   const [isConnected, setIsConnected] = useState(false);
   const [reauthRequired, setReauthRequired] = useState(false);
+  const [isWorkerAutoRefresh, setIsWorkerAutoRefresh] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('info'); // info, success, error
@@ -34,24 +35,31 @@ export default function SyncBackup() {
   const [discrepancyDecisions, setDiscrepancyDecisions] = useState({}); // { [vehicleKey]: 'delete_cloud' | 'restore_local' | 'delete_local' | 'upload_cloud' }
 
   useEffect(() => {
-    // Kiểm tra trạng thái kết nối và token trong bộ nhớ
-    if (googleDriveService.isConnected()) {
-      setIsConnected(true);
-      const activeToken = googleDriveService.getAccessToken();
-      setReauthRequired(!activeToken);
-    } else {
-      setIsConnected(false);
-      setReauthRequired(false);
-    }
+    const syncAuthStatus = () => {
+      const workerReady = googleDriveService.isWorkerAuthEnabled() && googleDriveService.hasRefreshToken();
+      setIsWorkerAutoRefresh(workerReady);
+
+      if (googleDriveService.isConnected()) {
+        setIsConnected(true);
+        const activeToken = googleDriveService.getAccessToken();
+        // Nếu đã có refresh_token qua Cloudflare Worker thì không cần cảnh báo hết hạn
+        setReauthRequired(!activeToken && !workerReady);
+      } else {
+        setIsConnected(false);
+        setReauthRequired(false);
+      }
+    };
+
+    syncAuthStatus();
 
     const handleLoginSuccessEvent = () => {
-      setIsConnected(true);
-      setReauthRequired(false);
+      syncAuthStatus();
     };
 
     const handleLogoutEvent = () => {
       setIsConnected(false);
       setReauthRequired(false);
+      setIsWorkerAutoRefresh(false);
       setLastSynced(null);
     };
 
@@ -81,11 +89,18 @@ export default function SyncBackup() {
     }
   };
 
-  // Hàm trợ giúp bọc tác vụ yêu cầu Token, tự động mở popup đăng nhập lại nếu hết hạn
+  // Hàm trợ giúp bọc tác vụ yêu cầu Token: tự động gia hạn ngầm trước, chỉ mở popup nếu thực sự cần
   const executeWithToken = async (actionFn) => {
-    const token = googleDriveService.getAccessToken();
+    setLoading(true);
+    let token = googleDriveService.getAccessToken();
+
+    if (!token && googleDriveService.isConnected()) {
+      showStatus('Đang tự động gia hạn phiên đăng nhập...', 'info');
+      token = await googleDriveService.ensureValidToken();
+    }
+
     if (token) {
-      setLoading(true);
+      setReauthRequired(false);
       try {
         await actionFn();
       } catch (err) {
@@ -95,6 +110,7 @@ export default function SyncBackup() {
         setLoading(false);
       }
     } else {
+      setLoading(false);
       showStatus('Phiên đăng nhập hết hạn, vui lòng Đăng nhập lại.', 'info');
       setReauthRequired(true);
 
@@ -388,8 +404,19 @@ export default function SyncBackup() {
                   </div>
                 </div>
                 <div>
-                  <p className="font-semibold text-slate-200">Đã kết nối Google Drive</p>
-                  <p className="text-xs text-slate-500 mt-1">Sao lưu thủ công & Hợp nhất an toàn vào thư mục riêng tư</p>
+                  <p className="font-semibold text-slate-200 flex items-center justify-center gap-2">
+                    <span>Đã kết nối Google Drive</span>
+                    {isWorkerAutoRefresh && (
+                      <span className="text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                        Gia hạn tự động
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {isWorkerAutoRefresh
+                      ? 'Phiên đăng nhập tự động gia hạn ngầm qua Cloudflare Worker'
+                      : 'Sao lưu thủ công & Hợp nhất an toàn vào thư mục riêng tư'}
+                  </p>
                   <p className="text-xs text-brand-400 mt-2 bg-brand-500/5 py-1 px-3 rounded-lg border border-brand-500/10 inline-block font-medium">
                     Đồng bộ lần cuối: {formatDateTime(lastSynced)}
                   </p>
@@ -501,12 +528,12 @@ export default function SyncBackup() {
         <div className="flex items-center gap-3 text-xs">
           <div>
             <span className="text-slate-500">Phiên bản: </span>
-            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.3.3</span>
+            <span className="text-brand-400 font-semibold font-mono bg-brand-500/10 px-2 py-0.5 rounded border border-brand-500/10">v1.3.4</span>
           </div>
           <div className="h-3 w-[1px] bg-slate-800"></div>
           <div>
             <span className="text-slate-500">Cập nhật: </span>
-            <span className="text-slate-300 font-medium">07/09/2026 02:24</span>
+            <span className="text-slate-300 font-medium">24/11/2026 19:40</span>
           </div>
         </div>
         <div className="text-[10px] text-slate-500 font-semibold pt-2 border-t border-slate-800/60 w-full mt-1">

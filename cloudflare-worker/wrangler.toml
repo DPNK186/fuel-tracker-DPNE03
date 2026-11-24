@@ -1,0 +1,7 @@
+name = "fuel-tracker-oauth-proxy"
+main = "oauth-worker.js"
+compatibility_date = "2026-01-01"
+
+[vars]
+# Thay <username> bằng tài khoản GitHub Pages của bạn
+ALLOWED_ORIGINS = "https://<username>.github.io,http://localhost:5173,http://localhost:4173"

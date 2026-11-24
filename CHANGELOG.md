@@ -2,6 +2,21 @@
 
 Tất cả các thay đổi quan trọng của dự án sẽ được ghi nhận tại đây.
 
+## 🚀 [1.3.4] - 2026-11-24
+
+### Added (Tính năng mới & Cải tiến)
+
+- **Tách riêng 2 nút Chụp ảnh & Chọn từ thư viện (Mục Chi phí):**
+  - Tách nút tải ảnh hóa đơn trong `ExpenseForm.jsx` thành 2 nút độc lập: **Chụp ảnh** (mở thẳng camera với `capture="environment"`) và **Chọn từ thư viện** (chọn ảnh có sẵn trên thiết bị).
+- **Quét & Nhận diện chỉ số ODO hoàn toàn Offline (`tesseract.js`):**
+  - Tích hợp nút **Quét ODO** ngay cạnh ô `Chỉ số ODO (km)` trong cả form Đổ xăng (`RefuelingForm.jsx`) và Chi phí (`ExpenseForm.jsx`).
+  - Hỗ trợ cả **Chụp đồng hồ ODO** lẫn **Chọn từ thư viện**, kèm Modal căn khung cắt vùng số, xoay 90°, chế độ đảo màu **LCD nền tối**, tiền xử lý tương phản đen/trắng (Otsu) và cho phép sửa nhanh trước khi áp dụng.
+  - Lazy-load `tesseract.js` (chỉ tải bộ nhận diện lần đầu, tự cache offline trong trình duyệt).
+- **Nâng cấp Đồng bộ Google Drive, Cloudflare Worker & Tài liệu Publish App:**
+  - Nâng cấp `googleDrive.js` hỗ trợ OAuth Authorization Code Flow kết hợp **Cloudflare Worker** (`VITE_OAUTH_WORKER_URL`) để lưu `refresh_token` và tự động gia hạn phiên đăng nhập ngầm vĩnh viễn không cần mở lại popup.
+  - Tự động thử gia hạn ngầm (`refreshTokenSilently`) trước khi mở popup ở chế độ chuẩn.
+  - Bổ sung sẵn mã nguồn Cloudflare Worker (`cloudflare-worker/`), trang Chính sách quyền riêng tư (`public/privacy.html`), Điều khoản sử dụng (`public/terms.html`) và hướng dẫn Publish App & Deploy Worker (`docs/google-drive-publish-and-worker.md`).
+
 ## 🚀 [1.3.3] - 2026-09-06
 
 ### Added (Tính năng mới & Trải nghiệm Đồng bộ)

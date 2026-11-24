@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Fuel, Calendar, Compass, Coins, PlusCircle, Trash2, Edit2, TrendingUp, X, AlertTriangle } from 'lucide-react';
+import { Fuel, Calendar, Compass, Coins, PlusCircle, Trash2, Edit2, TrendingUp, X, AlertTriangle, ScanLine } from 'lucide-react';
+import OdoScannerModal from './OdoScannerModal';
 
 // Chuẩn hóa số thập phân: đổi dấu phẩy thành dấu chấm và chỉ cho phép tối đa 1 dấu chấm
 const normalizeDecimal = (str) => {
@@ -37,6 +38,7 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
   const [fullTank, setFullTank] = useState(true);
   const [notes, setNotes] = useState('');
   const [editingId, setEditingId] = useState(null);
+  const [showOdoScanner, setShowOdoScanner] = useState(false);
 
   // State quản lý cảnh báo nhập liệu thời gian thực
   const [formWarnings, setFormWarnings] = useState([]);
@@ -443,9 +445,17 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
                     placeholder="Ví dụ: 12000"
                     value={odometer}
                     onChange={(e) => setOdometer(e.target.value)}
-                    className="glass-input !pl-10 w-full"
+                    className="glass-input !pl-10 !pr-10 w-full"
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowOdoScanner(true)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-brand-500/15 hover:bg-brand-500/25 text-brand-400 transition active:scale-95"
+                    title="Quét chỉ số ODO từ ảnh (Offline)"
+                  >
+                    <ScanLine className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -665,6 +675,13 @@ export default function RefuelingForm({ currentVehicleId, expandForm, setExpandF
           )}
         </div>
       </div>
+      {/* Modal Quét ODO Offline */}
+      <OdoScannerModal
+        isOpen={showOdoScanner}
+        onClose={() => setShowOdoScanner(false)}
+        onConfirm={(val) => setOdometer(val)}
+        accentColor="brand"
+      />
     </div>
   );
 }

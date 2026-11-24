@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
-import { Wrench, Calendar, Compass, Coins, PlusCircle, Trash2, Edit2, Camera, X } from 'lucide-react';
+import { Wrench, Calendar, Compass, Coins, PlusCircle, Trash2, Edit2, Camera, Image as ImageIcon, ScanLine, X } from 'lucide-react';
+import OdoScannerModal from './OdoScannerModal';
 
 const CATEGORIES = [
   'Bảo dưỡng',
@@ -26,6 +27,7 @@ export default function ExpenseForm({ currentVehicleId, expandForm, setExpandFor
   const [image, setImage] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [zoomedImage, setZoomedImage] = useState(null);
+  const [showOdoScanner, setShowOdoScanner] = useState(false);
 
   const dateInputRef = useRef(null);
 
@@ -79,6 +81,7 @@ export default function ExpenseForm({ currentVehicleId, expandForm, setExpandFor
       img.src = event.target.result;
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleSubmit = async (e) => {
@@ -245,15 +248,23 @@ export default function ExpenseForm({ currentVehicleId, expandForm, setExpandFor
                     placeholder="Ví dụ: 12050"
                     value={odometer}
                     onChange={(e) => setOdometer(e.target.value)}
-                    className="glass-input !pl-10 w-full focus:border-rose-500 focus:ring-rose-500/20"
+                    className="glass-input !pl-10 !pr-10 w-full focus:border-rose-500 focus:ring-rose-500/20"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowOdoScanner(true)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 transition active:scale-95"
+                    title="Quét chỉ số ODO từ ảnh (Offline)"
+                  >
+                    <ScanLine className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </div>
 
             {/* Chọn / Chụp ảnh */}
             <div className="flex flex-col">
-              <label className="text-xs text-slate-400 font-medium mb-1 pl-1">Ảnh hóa đơn/Biên lai (chụp/chọn file)</label>
+              <label className="text-xs text-slate-400 font-medium mb-1 pl-1">Ảnh hóa đơn/Biên lai</label>
               {image ? (
                 <div className="relative w-full h-32 rounded-xl overflow-hidden border border-slate-800 bg-slate-900 flex items-center justify-center">
                   <img src={image} alt="Preview" className="w-full h-full object-cover" />
@@ -267,22 +278,41 @@ export default function ExpenseForm({ currentVehicleId, expandForm, setExpandFor
                   </button>
                 </div>
               ) : (
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    id="expense-photo"
-                    onChange={handleImageChange}
-                    className="hidden"
-                  />
-                  <label
-                    htmlFor="expense-photo"
-                    className="w-full h-16 bg-slate-900/60 border border-dashed border-slate-800 hover:border-slate-700 rounded-xl flex items-center justify-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 transition"
-                  >
-                    <Camera className="w-5 h-5 text-slate-500" />
-                    <span className="text-xs font-semibold">Chụp ảnh hóa đơn / Chọn ảnh</span>
-                  </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      id="expense-photo-capture"
+                      onChange={handleImageChange}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="expense-photo-capture"
+                      className="w-full h-16 bg-slate-900/60 border border-dashed border-slate-800 hover:border-rose-500/40 rounded-xl flex items-center justify-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 transition active:scale-95"
+                    >
+                      <Camera className="w-5 h-5 text-rose-400" />
+                      <span className="text-xs font-semibold">Chụp ảnh</span>
+                    </label>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      id="expense-photo-gallery"
+                      onChange={handleImageChange}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="expense-photo-gallery"
+                      className="w-full h-16 bg-slate-900/60 border border-dashed border-slate-800 hover:border-slate-600 rounded-xl flex items-center justify-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200 transition active:scale-95"
+                    >
+                      <ImageIcon className="w-5 h-5 text-slate-400" />
+                      <span className="text-xs font-semibold">Chọn từ thư viện</span>
+                    </label>
+                  </div>
                 </div>
               )}
             </div>
@@ -401,6 +431,13 @@ export default function ExpenseForm({ currentVehicleId, expandForm, setExpandFor
           </div>
         </div>
       )}
+      {/* Modal Quét ODO Offline */}
+      <OdoScannerModal
+        isOpen={showOdoScanner}
+        onClose={() => setShowOdoScanner(false)}
+        onConfirm={(val) => setOdometer(val)}
+        accentColor="rose"
+      />
     </div>
   );
 }
